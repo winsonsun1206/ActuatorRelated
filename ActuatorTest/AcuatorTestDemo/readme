@@ -1,0 +1,33 @@
+# set the velocity to 0 to stop motion
+cansend can1 003#1200000000020000
+#set to velocity control mode:
+cansend can0 003#0303000000000000
+# clear up error
+cansend can1 003#0001000000000000
+#power up
+cansend can1 003#0189FD8613000000
+#control the speed to 150rad/s
+cansend can1 003#1200001643020000
+#control the speed to -150rad/s
+cansend can1 003#12000016C3020000
+#disable dummy streaming
+cansend can1 003#2500000000000000
+
+#???
+#set streaming parameters
+cansend can1 003#2F400D0300000000
+cansend can1 003#320F000000000000
+#set 500ms(2Hz) running
+cansend can1 003#3020A10700000000
+cansend can1 003#331F3C0000000000
+
+
+#others
+U+00B0 ° DEGREE SIGN
+U+00BA º MASCULINE ORDINAL INDICATOR
+U+02DA ˚ RING ABOVE
+U+2070 ⁰ SUPERSCRIPT ZERO
+U+2103 ℃ DEGREE CELSIUS
+U+2218 ∘ RING OPERATOR
+U+2713 right
+U+2717 cross mark
