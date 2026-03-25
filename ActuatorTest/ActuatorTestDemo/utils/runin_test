@@ -1,0 +1,331 @@
+#!/bin/bash
+
+# ============================================
+# Python File Batch Execution Script
+# Function: Execute multiple Python files sequentially, skip to next on timeout
+# Note: Timeout scripts continue running in background without termination
+# ============================================
+
+# Configuration parameters
+TIMEOUT=3                    # Timeout (seconds)
+LOG_DIR="$HOME/logs"              # Log directory
+mkdir -p "$LOG_DIR"                 # Create log directory if it doesn't exist
+LOG_FILE="$LOG_DIR/execution_$(date +%Y%m%d_%H%M%S).log"  # Log file
+PYTHON_CMD="python3"         # Python command
+WORK_DIR=$(pwd)              # Working directory
+PID_DIR="/tmp/python_pids"   # Directory to store PID files
+    
+# Create PID directory if it doesn't exist
+mkdir -p "$PID_DIR"
+
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+NC='\033[0m' # No Color
+
+# List of Python files to execute
+FILES=(
+    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/init.py"
+    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can0.py"
+    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can1.py"
+    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can0.py"
+    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can1.py"
+)
+
+# Logging function
+log() {
+    local level=$1
+    local message=$2
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    case $level in
+        "INFO")    echo -e "${BLUE}[$timestamp] $message${NC}" ;;
+        "SUCCESS") echo -e "${GREEN}[$timestamp] $message${NC}" ;;
+        "WARNING") echo -e "${YELLOW}[$timestamp] $message${NC}" ;;
+        "ERROR")   echo -e "${RED}[$timestamp] $message${NC}" ;;
+        "PROCESS") echo -e "${PURPLE}[$timestamp] $message${NC}" ;;
+        *)         echo -e "[$timestamp] $message" ;;
+    esac
+    
+    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+}
+
+# Check Python environment
+check_python() {
+    if ! command -v $PYTHON_CMD &> /dev/null; then
+        log "ERROR" "Python command not found: $PYTHON_CMD"
+        exit 1
+    fi
+    
+    local python_version=$($PYTHON_CMD --version 2>&1)
+    log "INFO" "Using Python: $python_version"
+}
+
+# Check if file exists
+check_file() {
+    local file=$1
+    
+    if [ ! -f "$file" ]; then
+        log "ERROR" "File does not exist: $file"
+        return 1
+    fi
+    
+    if [ ! -r "$file" ]; then
+        log "ERROR" "File is not readable: $file"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Save PID to file
+save_pid() {
+    local file=$1
+    local pid=$2
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Create a safe filename from the Python filename
+    local safe_name=$(echo "$file" | sed 's/\//_/g' | sed 's/\.py$//')
+    local pid_file="$PID_DIR/${safe_name}_${pid}.pid"
+    
+    cat > "$pid_file" << EOF
+# Python process information
+FILE=$file
+PID=$pid
+START_TIME=$timestamp
+STATUS=running
+EOF
+    
+    echo "$pid_file"
+}
+
+# List all running background processes
+list_background_processes() {
+    log "INFO" "Background Python processes:"
+    local count=0
+    
+    for pid_file in "$PID_DIR"/*.pid; do
+        if [ -f "$pid_file" ]; then
+            source "$pid_file" 2>/dev/null
+            if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+                log "PROCESS" "  PID: $PID, File: $FILE, Started: $START_TIME"
+                ((count++))
+            else
+                # Clean up stale PID files
+                rm -f "$pid_file"
+            fi
+        fi
+    done
+    
+    if [ $count -eq 0 ]; then
+        log "INFO" "  No background processes running"
+    fi
+}
+
+# Execute single file (Fixed version - NO termination)
+execute_file() {
+    local file=$1
+    local timeout=$2
+    local start_time=$(date +%s)
+    
+    log "INFO" "Starting execution: $file (monitoring timeout: ${timeout} seconds)"
+    
+    # IMPORTANT: Start Python process in background WITHOUT timeout command
+    $PYTHON_CMD "$file" &
+    local pid=$!
+    
+    log "INFO" "Process started with PID: $pid"
+    
+    # Save PID information
+    local pid_file=$(save_pid "$file" "$pid")
+    log "INFO" "Process info saved to: $pid_file"
+    
+    # Monitor for timeout period WITHOUT terminating
+    local elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+        # Check if process is still running
+        if ! kill -0 $pid 2>/dev/null; then
+            # Process completed before timeout
+            wait $pid 2>/dev/null
+            local exit_code=$?
+            
+            local end_time=$(date +%s)
+            local duration=$((end_time - start_time))
+            
+            # Remove PID file
+            rm -f "$pid_file"
+            
+            if [ $exit_code -eq 0 ]; then
+                log "SUCCESS" "✅ $file completed successfully (duration: ${duration} seconds)"
+                return 0
+            else
+                log "ERROR" "❌ $file failed (exit code: $exit_code)"
+                return $exit_code
+            fi
+        fi
+        
+        sleep 1
+        ((elapsed++))
+    done
+    
+    # Timeout reached - process is still running
+    if kill -0 $pid 2>/dev/null; then
+        log "WARNING" "⚠️ $file monitoring timeout reached (${timeout} seconds)"
+        log "WARNING" "Process $pid continues running in background (NOT terminated)"
+        log "PROCESS" "Background process: $file (PID: $pid)"
+        
+        # Update PID file status
+        if [ -f "$pid_file" ]; then
+            echo "STATUS=timeout_background" >> "$pid_file"
+            echo "TIMEOUT_TIME=$(date '+%Y-%m-%d %H:%M:%S')" >> "$pid_file"
+        fi
+        
+        local end_time=$(date +%s)
+        local duration=$((end_time - start_time))
+        
+        return 124  # Return timeout status code
+    else
+        # Process ended exactly at timeout moment
+        wait $pid 2>/dev/null
+        local exit_code=$?
+        
+        local end_time=$(date +%s)
+        local duration=$((end_time - start_time))
+        
+        rm -f "$pid_file"
+        
+        if [ $exit_code -eq 0 ]; then
+            log "SUCCESS" "✅ $file completed successfully (duration: ${duration} seconds)"
+            return 0
+        else
+            log "ERROR" "❌ $file failed (exit code: $exit_code)"
+            return $exit_code
+        fi
+    fi
+}
+
+# Cleanup function for showing final status
+show_final_status() {
+    echo ""
+    log "INFO" "========================================="
+    log "INFO" "Final Status Check"
+    
+    # List all remaining background processes
+    list_background_processes
+    
+    if [ -d "$PID_DIR" ] && [ "$(ls -A "$PID_DIR" 2>/dev/null)" ]; then
+        log "WARNING" ""
+        log "WARNING" "To check on background processes later:"
+        log "WARNING" "  ps aux | grep python"
+        log "WARNING" "  ls -la $PID_DIR/"
+        log "WARNING" ""
+        log "WARNING" "To terminate all background processes:"
+        log "WARNING" "  pkill -f '$PYTHON_CMD.*\.py'"
+        log "WARNING" "  rm -rf $PID_DIR/*"
+    fi
+    
+    log "INFO" "========================================="
+}
+
+# Main function
+main() {
+    log "INFO" "========================================="
+    log "INFO" "Starting batch execution of Python files"
+    log "INFO" "Working directory: $WORK_DIR"
+    log "INFO" "Log file: $LOG_FILE"
+    log "INFO" "PID directory: $PID_DIR"
+    log "INFO" "Monitor timeout: $TIMEOUT seconds"
+    log "INFO" "Timeout handling: Skip to next file (process continues)"
+    log "INFO" "========================================="
+    
+    # Check Python environment
+    check_python
+    
+    # Initialize counters
+    local total=${#FILES[@]}
+    local success=0
+    local timeout=0
+    local failed=0
+    local not_found=0
+    
+    # Clear old PID files
+    rm -f "$PID_DIR"/*.pid 2>/dev/null
+    
+    # Iterate through files
+    for i in "${!FILES[@]}"; do
+        local file="${FILES[$i]}"
+        local index=$((i + 1))
+        
+        echo ""
+        log "INFO" "[$index/$total] Processing file: $file"
+        
+        # Check if file exists
+        if ! check_file "$file"; then
+            ((not_found++))
+            continue
+        fi
+        
+        # Execute file
+        execute_file "$file" $TIMEOUT
+        local result=$?
+        
+        # Count results
+        case $result in
+            0)  ((success++)) ;;
+            124) 
+                ((timeout++))
+                ;;
+            *)  ((failed++)) ;;
+        esac
+        
+        # Pause between files
+        if [ $i -lt $((total - 1)) ]; then
+            log "INFO" "Preparing to execute next file..."
+            sleep 1
+        fi
+    done
+    
+    # Output statistics
+    echo ""
+    log "INFO" "========================================="
+    log "INFO" "Execution completed! Statistics:"
+    log "INFO" "  Total files: $total"
+    log "SUCCESS" "  Successful: $success"
+    log "WARNING" "  Timeout (background): $timeout"
+    log "ERROR" "  Failed: $failed"
+    [ $not_found -gt 0 ] && log "ERROR" "  Not found: $not_found"
+    log "INFO" "========================================="
+    log "INFO" "Detailed log: $LOG_FILE"
+    
+    # Show final status with background processes
+    show_final_status
+    
+    # Return overall status
+    if [ $failed -gt 0 ] || [ $not_found -gt 0 ]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# Capture interrupt signals
+cleanup() {
+    echo ""
+    log "WARNING" "Received interrupt signal, exiting..."
+    
+    # Show background processes before exiting
+    show_final_status
+    
+    exit 1
+}
+
+trap cleanup SIGINT SIGTERM
+
+# Run main function
+main
+
+# Exit
+exit $?
