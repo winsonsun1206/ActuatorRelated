@@ -28,11 +28,11 @@ NC='\033[0m' # No Color
 
 # List of Python files to execute
 FILES=(
-    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/init.py"
-    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can0.py"
-    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can1.py"
-    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can0.py"
-    "~/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can1.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/init.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can0.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can1.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can0.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can1.py"
 )
 
 # Logging function
