@@ -1,0 +1,54 @@
+{
+     "version": "1.0.0",
+  "last_updated": "2026-02-25",
+  "DUT": {
+    "model": "1566",
+    "hardware_version": "1.9.0",
+    "firmware_version": "1.40.0",
+    "max_torque": 200.0,
+    "max_speed": 220.0,   
+    "max_current": 6.0,
+    "max_temperature": 75.0,
+    "loop_nums": 60
+  },
+  "test_environment": {
+    "temperature": "25°C",
+    "humidity": "45%",
+    "power_supply": "48V DC"
+  },
+  "test_cases": [
+    {
+      "id": "NOLOAD-TEST-003",
+      "name": "high speed test",
+      "test_type": "velocity_control",
+      "description": "70% of max speed test with no load-forward direction",
+      "parameters": {
+        "speed_target": 0.7,
+        "acceleration": 50.0,
+        "deceleration": 50.0,
+        "duration": 25,
+        "quiescent_time": 10,
+        "tolerance": 0.1,
+        "repeat_count": 1
+      },
+      "expected_result":  {"temperature_variance": "2", "current_variance": "0.05"}
+    },
+    {
+      "id": "NOLOAD-TEST-004",
+      "name": "high speed test",
+      "test_type": "velocity_control",
+      "description": "70% of max speed test with no load-reverse direction",
+      "parameters": {
+        "speed_target": -0.7,
+        "acceleration": 50.0,
+        "deceleration": 50.0,
+        "duration": 25,
+        "quiescent_time": 10,
+        "tolerance": 0.1,
+        "repeat_count": 1
+      },
+      "expected_result":  {"temperature_variance": "2", "current_variance": "0.05"}
+    }
+
+  ]
+}

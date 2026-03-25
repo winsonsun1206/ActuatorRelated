@@ -21,6 +21,19 @@ cansend can1 003#320F000000000000
 cansend can1 003#3020A10700000000
 cansend can1 003#331F3C0000000000
 
+####
+# MCL_CALIBRATE_MOTOR_PARATMETERS
+cansend can1 003#0601000000000000
+# MCL_CALIBRATE_electrical_PARATMETERS
+cansend can1 003#0701000000000000
+# MCL_CALIBRATE_encoder_SENSOR
+cansend can1 003#0801000000000000
+#save the parameters to flash
+cansend can1 003#0C87A4429F000000
+#LOAD parameters from flash
+cansend can1 003#0D01000000000000
+
+
 
 #others
 U+00B0 ° DEGREE SIGN

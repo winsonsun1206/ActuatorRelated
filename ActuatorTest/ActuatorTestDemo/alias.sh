@@ -1,0 +1,1 @@
+alias test_single_actuator = 'cd /home/winsonsun/Documents/ActuatorTest/AcuatorTestDemo && python3 -m runin_singletest.py && cd - > /dev/null'
