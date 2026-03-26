@@ -11,13 +11,14 @@
 - 日志位置: /home/rivr-test1/git_pull.log
 
 ## 3. 定时任务 (Crontab)
-配置内容: 0 0 * * * /bin/bash /home/rivr-test1/auto_pull.sh
+- 配置内容: 0 0 * * * /bin/bash /home/rivr-test1/auto_pull.sh
 
 ## 4. 同步流程
-Windows 修改代码 -> 推送 (Push) 至 GitHub -> 树莓派定时拉取 (Pull) -> 自动更新
+- Windows 修改代码 -> 推送 (Push) 至 GitHub -> 树莓派定时拉取 (Pull) -> 自动更新
 
----
 ## 5.可手动运行或pull
-./auto_pull.sh
-查看日志文件：cat /home/rivr-test1/git_pull.log
+- 手动运行：./auto_pull.sh 
+- 查看日志文件：cat /home/rivr-test1/git_pull.log
+
+--------------------------------------------------------------------------------------
 
