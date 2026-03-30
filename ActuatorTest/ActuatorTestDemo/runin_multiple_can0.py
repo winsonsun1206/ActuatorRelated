@@ -24,7 +24,6 @@ class TestSlot:
     part_number: str
     serial_number: str
     can_msg_id: int
-    can_bus_id: int
 
 HOST = '127.0.0.1'
 UDP_PORT = 15006
@@ -197,6 +196,7 @@ class RabbitmqCusumer:
                     continue
                 elif task.get('operation') == 'runin_test':
                     test_slots = task.get('parameters', {})
+                    task_id = task.get('task_id', f'can0_unknown_runin_task_id_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}').strip()
                     if not test_slots or len(test_slots) == 0:
                         print("No test slots provided in the task parameters.")
                         continue
@@ -207,21 +207,27 @@ class RabbitmqCusumer:
                     seq_file_20 = '/home/winsonsun/Documents/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
                     seq_file_70 = '/home/winsonsun/Documents/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_70.json'
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
+                        self.redis_handler.set_value(task_id, 0.0)
                         client_socket.settimeout(2.0)  # 设置超时时间为5秒
                         try:
                             client_socket.sendto(json.dumps({
                                 "message": f"runin_test for Part Numbers: {','.join(part_numbers)}, Serial Numbers: {','.join(serial_numbers)}, CAN Addresses: {','.join(hex(addr) for addr in can_msg_addresses)}"
                             }).encode('utf-8'), (HOST, UDP_PORT))
                             print(f"Sent test start message to UDP server at {HOST}:{UDP_PORT}")
+                            
                             runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_20)
+                            self.redis_handler.set_value(task_id, 0.5)
                             runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_70)
                             #time.sleep(5.0)
                             client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                             print(f"Sent test completion message to UDP server at {HOST}:{UDP_PORT}")
                         except socket.timeout:
                             print(f"Failed to send message to UDP server at {HOST}:{UDP_PORT} due to timeout.")
+                        finally:
+                            self.redis_handler.set_value(task_id, 1.0) # 设置一个redis键值对来标识通信超时
                 elif task.get('operation') == 'calibration':
                     test_slots = task.get('parameters', {})
+                    task_id = task.get('task_id', f'can0_unknown_calibration_task_id_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}')
                     if not test_slots or len(test_slots) == 0:
                         print("No test slots provided in the task parameters.")
                         continue
@@ -252,13 +258,16 @@ class RabbitmqCusumer:
                         #     continue  # 跳过后续的校准步骤
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_msg_addresses[0]}_{serial_numbers[0]}_status".strip(), 0)  # 重置状态为0，等待校准完成的反馈
                         # time.sleep(500)
+                        self.redis_handler.set_value(task_id, 0.0)
                         calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         heartbeat_calibration(can_msg_addresses, timeout=230)
+                        self.redis_handler.set_value(task_id, 0.5)
                         calibrate_electrical_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         heartbeat_calibration(can_msg_addresses, timeout=230)
                         save_parameters_to_flash(part_numbers, serial_numbers, can_msg_addresses)
                         client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                         print("Calibration process completed.")
+                        self.redis_handler.set_value(task_id, 1.0)
                         #client_socket.sendto(json.dumps({"message":"motor parameter calibration"}).encode('utf-8'), (HOST, UDP_PORT))
                         # while calibration_active and datetime.datetime.now()- start_time < 600.0:
                         #     try:
