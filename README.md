@@ -45,6 +45,7 @@ echo "------------------------------" >> /home/rivr-test1/git_pull.log
 - utils下db_handler.py 数据库连接与写入核心逻辑
 - test2.py 自动化上传测试脚本 (Demo) --->ActuatorTestDemo 下运行 python3 test2.py
 - MySQL  performance_details json 存储灵活字段
+```bash
 SELECT 
     trace_sn, 
     joint_no,
@@ -55,5 +56,6 @@ SELECT
     performance_details->>'$.stability' AS '稳定性',
     performance_details->>'$.notes' AS '备注'
 FROM actuator_test_system_wzy.product_test_records;
+```
 - json里的信息拆解显示
 ----------------------------------------------------------------------------------------
