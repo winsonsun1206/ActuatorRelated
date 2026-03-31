@@ -20,34 +20,35 @@
 - 手动运行：./auto_pull.sh 
 - 查看日志文件：cat /home/rivr-test1/git_pull.log
 
+
 - 代码：
 
 #!/bin/bash
 
-# 1. 切换到脚本所在的精确目录（请务必核对这个路径！）
+## 1. 切换到脚本所在的精确目录（请务必核对这个路径！）
 cd /home/rivr-test1/ActuatorRelated/ActuatorTest/ActuatorTestDemo/ || exit
 
-# 2. 拉取最新代码
+## 2. 拉取最新代码
 git pull origin main >> /home/rivr-test1/git_pull.log 2>&1
 
-# 3. 杀掉旧进程
-# 使用 pkill -f 匹配完整命令行名
+## 3. 杀掉旧进程
+## 使用 pkill -f 匹配完整命令行名
 pkill -f "receive_can0.py"
 pkill -f "receive_can1.py"
 pkill -f "runin_multiple_can0.py"
 pkill -f "runin_multiple_can1.py"
 
-# 等待 2 秒确保端口或资源释放
+## 等待 2 秒确保端口或资源释放
 sleep 2
 
-# 4. 重新启动程序
-# 建议日志也写绝对路径，方便查看
+## 4. 重新启动程序
+## 建议日志也写绝对路径，方便查看
 nohup python3 receive_can0.py > can0_receive.log 2>&1 &
 nohup python3 receive_can1.py > can1_receive.log 2>&1 &
 nohup python3 runin_multiple_can0.py > can0_runin.log 2>&1 &
 nohup python3 runin_multiple_can1.py > can1_runin.log 2>&1 &
 
-# 5. 记录执行日志
+## 5. 记录执行日志
 echo "Auto pull and Restart executed at $(date)" >> /home/rivr-test1/git_pull.log
 echo "----------------------------------------" >> /home/rivr-test1/git_pull.log
 --------------------------------------------------------------------------------------
