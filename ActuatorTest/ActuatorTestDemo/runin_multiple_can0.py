@@ -138,16 +138,16 @@ def runin_test(actuator_pn:list[str], actuator_sn:list[str], can_msg_address: li
             # add one byte of 0x12 as the sub address for acceleration, anb make it ahead of acceleration data
             acceleration_data = b'\x1E' + acceleration_data + b'\x02\x00\x00'  # 补齐到8字节
             send_can_data(can_bus, can_msg_address, acceleration_data)
-            print(f"      Acceleration data to send: {acceleration_data.hex()}")
+            #print(f"      Acceleration data to send: {acceleration_data.hex()}")
             #--------------------
             deceleration_data = struct.pack('<f', deceleration)  # 将减速度转换
             deceleration_data = b'\x1F' + deceleration_data + b'\x02\x00\x00'  # 补齐到8字节
-            print(f"      Deceleration data to send: {deceleration_data.hex()}")
+            #print(f"      Deceleration data to send: {deceleration_data.hex()}")
             send_can_data(can_bus, can_msg_address, deceleration_data)
             #--------------------    
             speed = struct.pack('<f', speed_target)  # 将速度目标转换为4字节小端格式
             speed_data = b'\x12' + speed + b'\x02\x00\x00'  # 补齐到8字节
-            print(f"      Speed target data to send: {speed_data.hex()}")
+            #print(f"      Speed target data to send: {speed_data.hex()}")
             send_can_data(can_bus, can_msg_address, speed_data)
             #----------------------------
             ## counting down the sleep time for better visualization of the test process
