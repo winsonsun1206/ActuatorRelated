@@ -207,9 +207,9 @@ class RabbitmqCusumer:
                         print("No test slots provided in the task parameters.")
                         continue
 
-                    part_numbers = [slot.part_number for slot in test_slots]
-                    serial_numbers = [slot.serial_number for slot in test_slots]
-                    can_msg_addresses = [slot.can_msg_id for slot in test_slots]
+                    part_numbers = [slot['part_number'] for slot in test_slots]
+                    serial_numbers = [slot['serial_number'] for slot in test_slots]
+                    can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]
                     seq_file_20 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
                     seq_file_70 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_70.json'
                     self.redis_handler.set_value(task_id, 0.0)
@@ -237,9 +237,9 @@ class RabbitmqCusumer:
                     if not test_slots or len(test_slots) == 0:
                         print("No test slots provided in the task parameters.")
                         continue
-                    part_numbers = [slot.part_number for slot in test_slots]
-                    serial_numbers = [slot.serial_number for slot in test_slots]
-                    can_msg_addresses = [slot.can_msg_id for slot in test_slots]
+                    part_numbers = [slot['part_number'] for slot in test_slots]
+                    serial_numbers = [slot['serial_number'] for slot in test_slots]
+                    can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]
                     calibration_active = True
                    
                     

@@ -25,6 +25,7 @@ class TestSlot:
     part_number: str
     serial_number: str
     can_msg_id: int
+    can_bus_id: int
 
 HOST = '127.0.0.1'
 UDP_PORT = 15006
@@ -202,9 +203,9 @@ class RabbitmqCusumer:
                         print("No test slots provided in the task parameters.")
                         continue
 
-                    part_numbers = [slot.part_number for slot in test_slots]
-                    serial_numbers = [slot.serial_number for slot in test_slots]
-                    can_msg_addresses = [slot.can_msg_id for slot in test_slots]
+                    part_numbers = [slot['part_number'] for slot in test_slots]
+                    serial_numbers = [slot['serial_number'] for slot in test_slots]
+                    can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]
                     seq_file_20 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
                     seq_file_70 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_70.json'
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
@@ -232,9 +233,9 @@ class RabbitmqCusumer:
                     if not test_slots or len(test_slots) == 0:
                         print("No test slots provided in the task parameters.")
                         continue
-                    part_numbers = [slot.part_number for slot in test_slots]
-                    serial_numbers = [slot.serial_number for slot in test_slots]
-                    can_msg_addresses = [slot.can_msg_id for slot in test_slots]
+                    part_numbers = [slot['part_number'] for slot in test_slots]
+                    serial_numbers = [slot['serial_number'] for slot in test_slots]
+                    can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]
                     calibration_active = True
                    
                     
