@@ -204,8 +204,8 @@ class RabbitmqCusumer:
                     part_numbers = [slot.part_number for slot in test_slots]
                     serial_numbers = [slot.serial_number for slot in test_slots]
                     can_msg_addresses = [slot.can_msg_id for slot in test_slots]
-                    seq_file_20 = '~/Documents/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
-                    seq_file_70 = '~/Documents/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_70.json'
+                    seq_file_20 = '~/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
+                    seq_file_70 = '~/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_70.json'
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
                         self.redis_handler.set_value(task_id, 0.0)
                         client_socket.settimeout(2.0)  # 设置超时时间为5秒
