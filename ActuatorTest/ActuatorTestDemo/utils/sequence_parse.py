@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 def parse_test_cases(file_path):
     """
@@ -47,7 +48,7 @@ def parse_test_cases(file_path):
 # ==========================================
 if __name__ == "__main__":
     # Make sure 'test_sequence.json' is in the same directory as this script
-    my_test_cases, dut_info, test_plan = parse_test_cases('resource/sequences/test_sequence.json')
+    my_test_cases, dut_info= parse_test_cases(f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json')
     if my_test_cases is not None and len(my_test_cases)>0:
         for test in my_test_cases:
             print(test)
