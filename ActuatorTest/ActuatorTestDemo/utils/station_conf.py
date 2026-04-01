@@ -14,4 +14,4 @@ def read_station_conf():
         for line in lines:
             key, value = line.strip().split(":")
             conf[key] = value
-    return conf.strip()
+    return conf
