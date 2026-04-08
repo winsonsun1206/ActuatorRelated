@@ -58,4 +58,50 @@ SELECT
 FROM actuator_test_system_wzy.product_test_records;
 ```
 - json里的信息拆解显示
+
+- 创建表格的语句
+```bash
+-- 1. 创建数据库（如果服务器上还没有的话）
+CREATE DATABASE IF NOT EXISTS actuator_test_system DEFAULT CHARACTER SET utf8mb4;
+USE actuator_test_system;
+
+-- 2. 创建产品测试记录表
+CREATE TABLE IF NOT EXISTS product_test_records (
+    -- 【基础追踪信息】
+    id INT AUTO_INCREMENT PRIMARY KEY COMMENT '数据库内部唯一ID',
+    trace_sn VARCHAR(100) NOT NULL UNIQUE COMMENT '4. 追溯号SN (全局唯一)',
+    joint_name ENUM('joint', 'wheel') NOT NULL COMMENT '1. 关节名称',
+    joint_no VARCHAR(50) NOT NULL COMMENT '2. 关节编号',
+    can_id INT COMMENT '3. CAN ID',
+    
+    -- 【版本与日期】
+    production_date DATE COMMENT '5. 生产日期',
+    hw_version VARCHAR(50) COMMENT '18. 电路板硬件版本',
+    sw_version VARCHAR(50) COMMENT '6. 软件烧写版本',
+    
+    -- 【人员与时间】
+    tester_id VARCHAR(30) COMMENT '8. 测试人员ID',
+    tester_name VARCHAR(50) COMMENT '9. 测试人员name',
+    test_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '系统记录的测试日期时间',
+    test_duration_sec FLOAT COMMENT '19. 测试总耗时(秒)',
+    
+    -- 【核心测试结果】
+    calibration_result VARCHAR(100) COMMENT '7. calibration结果',
+    error_code VARCHAR(100) DEFAULT '0x00' COMMENT '16. 错误码(报错)',
+    final_status ENUM('PASS', 'FAIL') NOT NULL COMMENT '17. 测试结论',
+    
+    -- 【关键电学与环境参数】
+    start_current_a DOUBLE COMMENT '10. 启动电流值(A)',
+    voltage_v DOUBLE COMMENT '11. 电压值(V)',
+    max_temp_c DOUBLE COMMENT '12. 温度值(最大值 C)',
+    
+    -- 【灵活扩展字段 (JSON)】
+    -- 将变动较大或复杂的 13, 14, 15 项存入此处
+    performance_details JSON COMMENT '存储13.粘性系数(顺/逆)、15.通信状态(丢包率/稳定性)等',
+    
+    -- 建立索引方便以后秒搜 SN 和 时间
+    INDEX idx_sn (trace_sn),
+    INDEX idx_time (test_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
 ----------------------------------------------------------------------------------------
