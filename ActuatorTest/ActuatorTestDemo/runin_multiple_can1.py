@@ -133,8 +133,8 @@ def runin_test(actuator_pn:list[str], actuator_sn:list[str], can_msg_address: li
             acceleration = parameters.get("acceleration", 0)
             deceleration = parameters.get("deceleration", 0)
             duration = parameters.get("duration", 0)
-            print(f"      Executing test case {test_id} with parameters: speed_target={speed_target}, acceleration={acceleration}, deceleration={deceleration}, duration={duration}, quiescent_time={parameters.get('quiescent_time', 0)}")
-            print("-" * 40)
+            #print(f"      Executing test case {test_id} with parameters: speed_target={speed_target}, acceleration={acceleration}, deceleration={deceleration}, duration={duration}, quiescent_time={parameters.get('quiescent_time', 0)}")
+            #print("-" * 40)
             # 构造要发送的数据，这里假设要发送速度目标
             #convert the acceleration to little-endian byte format
             acceleration_data = struct.pack('<f', acceleration)  # 将加速度转换为4字节小端格式
@@ -160,14 +160,14 @@ def runin_test(actuator_pn:list[str], actuator_sn:list[str], can_msg_address: li
                 sys.stdout.write(f"\r      Time remaining: {remaining} seconds")
                 sys.stdout.flush()
                 time.sleep(1)
-            print("\n      Test case execution completed. Entering quiescent time.")
+            #print("\n      Test case execution completed. Entering quiescent time.")
             quiescent_time = parameters.get("quiescent_time", 0)
             send_can_data(can_bus, can_msg_address, b'\x12\x00\x00\x00\x00\x02\x00\x00')  # 发送速度为0的消息以停止执行
             for remaining in range(quiescent_time, 0, -1):
                 sys.stdout.write(f"\r      Quiescent time remaining: {remaining} seconds")
                 sys.stdout.flush()
                 time.sleep(1)
-            print("\n      Quiescent time completed.")
+            #print("\n      Quiescent time completed.")
             print("=" * 50)
 
 class RabbitmqCusumer:
@@ -206,7 +206,44 @@ class RabbitmqCusumer:
                     if not test_slots or len(test_slots) == 0:
                         print("No test slots provided in the task parameters.")
                         continue
+                # 实时读取配置
+                try:
+                    conf = read_station_conf()
+                    is_debug = conf.get("debug_mode", "false").lower() == "true"
+                except:
+                    is_debug = False
 
+                if task.get('operation') == 'runin_test':
+                    test_slots = task.get('parameters', {})
+                    task_id = task.get('task_id', f'can0_runin_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}').strip()
+                    
+                    self.redis_handler.set_value(task_id, 0.0) # 任务开始
+
+                    if is_debug:
+                        print(f">>> DEBUG MODE")
+                        time.sleep(8)  # 模拟第一阶段：20%速度
+                        
+                        self.redis_handler.set_value(task_id, 0.5) # 更新进度到一半
+                        
+                       
+                        time.sleep(7)  # 模拟第二阶段：70%速度
+                    else:
+                        # 原有的真实测试逻辑
+                        part_numbers = [slot['part_number'] for slot in test_slots]
+                        serial_numbers = [slot['serial_number'] for slot in test_slots]
+                        can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]
+                        
+                        seq_file_20 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
+                        seq_file_70 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_70.json'
+                        
+                        runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_20)
+                        self.redis_handler.set_value(task_id, 0.5)
+                        runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_70)
+
+                    self.redis_handler.set_value(task_id, 1.0) # 任务结束
+                    print(f"Task {task_id} finished (Mode: {'DEBUG' if is_debug else 'REAL'}).")
+
+            
                     part_numbers = [slot['part_number'] for slot in test_slots]
                     serial_numbers = [slot['serial_number'] for slot in test_slots]
                     can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]

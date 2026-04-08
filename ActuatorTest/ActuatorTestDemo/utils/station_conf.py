@@ -12,6 +12,9 @@ def read_station_conf():
         lines = f.readlines()
         conf = {}
         for line in lines:
-            key, value = line.strip().split(":")
-            conf[key] = value
+            if ":" in line:
+                key, value = line.strip().split(":", 1) # 只切分第一个冒号
+                conf[key.strip()] = value.strip() # 去除多余空格
+            #key, value = line.strip().split(":")
+            #conf[key] = value
     return conf
