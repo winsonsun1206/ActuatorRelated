@@ -66,7 +66,7 @@ CREATE DATABASE IF NOT EXISTS actuator_test_system DEFAULT CHARACTER SET utf8mb4
 USE actuator_test_system;
 
 -- 2. 创建产品测试记录表
-CREATE TABLE IF NOT EXISTS product_test_records (
+CREATE TABLE IF NOT EXISTS runin_test_records (
     -- 【基础追踪信息】
     id INT AUTO_INCREMENT PRIMARY KEY COMMENT '数据库内部唯一ID',
     trace_sn VARCHAR(100) NOT NULL UNIQUE COMMENT '4. 追溯号SN (全局唯一)',
@@ -75,13 +75,12 @@ CREATE TABLE IF NOT EXISTS product_test_records (
     can_id INT COMMENT '3. CAN ID',
     
     -- 【版本与日期】
-    production_date DATE COMMENT '5. 生产日期',
     hw_version VARCHAR(50) COMMENT '18. 电路板硬件版本',
     sw_version VARCHAR(50) COMMENT '6. 软件烧写版本',
     
     -- 【人员与时间】
-    tester_id VARCHAR(30) COMMENT '8. 测试人员ID',
-    tester_name VARCHAR(50) COMMENT '9. 测试人员name',
+    operator_id VARCHAR(50) COMMENT '8. 测试人员ID',
+    operator_name VARCHAR(50) COMMENT '9. 测试人员name',
     test_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '系统记录的测试日期时间',
     test_duration_sec FLOAT COMMENT '19. 测试总耗时(秒)',
     

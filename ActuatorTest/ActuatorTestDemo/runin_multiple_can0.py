@@ -217,12 +217,9 @@ class RabbitmqCusumer:
 
                     if is_debug:
                         print(f">>> DEBUG MODE")
-                        time.sleep(8)  # 模拟第一阶段：20%速度
-                        
+                        time.sleep(6)  # 模拟第一阶段：20%速度
                         self.redis_handler.set_value(task_id, 0.5) # 更新进度到一半
-                        
-                        
-                        time.sleep(7)  # 模拟第二阶段：70%速度
+                        time.sleep(8)  # 模拟第二阶段：70%速度
                     else:
                         # 原有的真实测试逻辑
                         part_numbers = [slot['part_number'] for slot in test_slots]
