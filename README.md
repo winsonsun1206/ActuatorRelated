@@ -69,9 +69,9 @@ USE actuator_test_system;
 CREATE TABLE IF NOT EXISTS runin_test_records (
     -- 【基础追踪信息】
     id INT AUTO_INCREMENT PRIMARY KEY COMMENT '数据库内部唯一ID',
-    trace_sn VARCHAR(100) NOT NULL UNIQUE COMMENT '4. 追溯号SN (全局唯一)',
+    serial_number VARCHAR(100) NOT NULL UNIQUE COMMENT '4. 追溯号SN (全局唯一)',
     joint_name ENUM('joint', 'wheel') NOT NULL COMMENT '1. 关节名称',
-    joint_no VARCHAR(50) NOT NULL COMMENT '2. 关节编号',
+    part_number VARCHAR(50) NOT NULL COMMENT '2. 关节编号',
     can_id INT COMMENT '3. CAN ID',
     
     -- 【版本与日期】
@@ -93,13 +93,13 @@ CREATE TABLE IF NOT EXISTS runin_test_records (
     start_current_a DOUBLE COMMENT '10. 启动电流值(A)',
     voltage_v DOUBLE COMMENT '11. 电压值(V)',
     max_temp_c DOUBLE COMMENT '12. 温度值(最大值 C)',
-    
-    -- 【灵活扩展字段 (JSON)】
-    -- 将变动较大或复杂的 13, 14, 15 项存入此处
-    performance_details JSON COMMENT '存储13.粘性系数(顺/逆)、15.通信状态(丢包率/稳定性)等',
+    current_shift DOUBLE COMMENT '13. shift percent between start/end of current',
+    forward_viscosity DOUBLE COMMENT '14. forward viscous_cw',
+    reverse_viscosity DOUBLE COMMENT '15. reverse_viscosity',
+    performance_details JSON COMMENT '16, for scalability',
     
     -- 建立索引方便以后秒搜 SN 和 时间
-    INDEX idx_sn (trace_sn),
+    INDEX idx_sn (serial_number),
     INDEX idx_time (test_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
