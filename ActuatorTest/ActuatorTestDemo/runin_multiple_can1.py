@@ -2,6 +2,7 @@ import os
 import click
 import sys
 from utils.mysql_ops import insert_test_record
+from utils.models import RuninTestRecord
 from utils.sequence_parse import parse_test_cases
 from utils.send_data import send_can_data
 import can
@@ -246,8 +247,8 @@ class RabbitmqCusumer:
                                 self.redis_handler.set_value(task_id, 0.5)
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_70)
                                 for slot in test_slots:
-                                    insert_test_record(
-                                        serial_number=slot['serial_number'],
+                                    result_obj= RuninTestRecord(
+                                         serial_number=slot['serial_number'],
                                         joint_name='joint' if slot['can_msg_id'] in range(1,4) else 'wheel',  # 示例：根据CAN消息ID的奇偶性来区分joint和wheel_
                                         part_number=slot['part_number'],
                                         can_id=slot['can_msg_id'],
@@ -266,6 +267,7 @@ class RabbitmqCusumer:
                                         reverse_viscosity=0.0,
                                         performance_details={"empty": True}
                                     )
+                                    insert_test_record(result_obj)
                                         
                                 #time.sleep(5.0)
                                 client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
