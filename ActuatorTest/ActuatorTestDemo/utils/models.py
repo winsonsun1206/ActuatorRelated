@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime,Float, Enum, JSON
 from sqlalchemy.sql import func
-from mysql_session import Base
+from utils.mysql_session import Base
 
 class RuninTestRecord(Base):
     __tablename__ = 'runin_test_records'

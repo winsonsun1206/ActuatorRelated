@@ -1,6 +1,6 @@
 from contextlib import contextmanager
-from mysql_session import get_db_session, session_maker
-from models import RuninTestRecord
+from utils.mysql_session import get_db_session, session_maker
+from utils.models import RuninTestRecord
 import os
 from dotenv import load_dotenv
 

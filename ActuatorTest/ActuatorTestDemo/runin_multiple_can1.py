@@ -215,6 +215,7 @@ class RabbitmqCusumer:
                     is_debug = False
 
                 if task.get('operation') == 'runin_test':
+                    start_time = datetime.datetime.now()
                     test_slots = task.get('parameters', {})
                     task_id = task.get('task_id', f'can0_runin_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}').strip()
                     
