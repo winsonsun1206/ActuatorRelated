@@ -132,9 +132,17 @@ execute_file() {
     local start_time=$(date +%s)
     
     log "INFO" "Starting execution: $file (monitoring timeout: ${timeout} seconds)"
-    
+    # cd the directory of the file to ensure relative imports work correctly
+    local file_dir=$(dirname "$file")
+    cd "$file_dir" || return 1
+    $PYTHON_CMD -c "import sys; print('Python version:', sys.version)" 2>&1 | log "INFO"
+    $PYTHON_CMD -c "import os; print('Current working directory:', os.getcwd())" 2>&1 | log "INFO"
+    $PYTHON_CMD -c "print('Executing file: $file')" 2>&1 | log "INFO"
+    $PYTHON_CMD -c "import time; print('Start time:', time.strftime('%Y-%m-%d %H:%M:%S'))" 2>&1 | log "INFO"
+
     # IMPORTANT: Start Python process in background WITHOUT timeout command
-    $PYTHON_CMD "$file" &
+    $PYTHON_CMD "$file" >> "$LOG_FILE" 2>&1 &   
+
     local pid=$!
     
     log "INFO" "Process started with PID: $pid"
