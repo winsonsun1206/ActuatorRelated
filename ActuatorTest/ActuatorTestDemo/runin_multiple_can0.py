@@ -262,6 +262,7 @@ class RabbitmqCusumer:
                                         current_shift=0.5,
                                         forward_viscosity=0.0,
                                         reverse_viscosity=0.0,
+                                        test_time= datetime.datetime.now(),
                                         performance_details={"empty": True}
                                     )
                                         insert_test_record(result_obj)
