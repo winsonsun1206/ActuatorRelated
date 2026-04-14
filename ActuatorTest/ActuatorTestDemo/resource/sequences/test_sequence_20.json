@@ -27,7 +27,7 @@
         "acceleration": 40.0,
         "deceleration": 40.0,
         "duration": 25,
-        "quiescent_time": 10,
+        "quiescent_time": 6,
         "tolerance": 0.1,
         "repeat_count": 1
       },
@@ -43,7 +43,7 @@
         "acceleration": 40.0,
         "deceleration": 40.0,
         "duration": 25,
-        "quiescent_time": 10,
+        "quiescent_time": 6,
         "tolerance": 0.1,
         "repeat_count": 1
       },
