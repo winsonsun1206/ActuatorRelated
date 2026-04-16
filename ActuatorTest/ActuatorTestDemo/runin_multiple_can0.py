@@ -247,7 +247,7 @@ class RabbitmqCusumer:
                                 #get the max temperature from udp comm
                                 result_raw, _udp =client_socket.recvfrom(BUFFER_SIZE)
                                 result_data = json.loads(result_raw.decode('utf-8')).get("data", {})
-                                print(f"Received test result from UDP server at {HOST}:{UDP_PORT}: {result_data}")
+                                print(f"error_code: {result_data.get("error_code", {}).get(str(slot['can_msg_id']), 'unknown')}")
                                 for slot in test_slots:
                                         result_obj= RuninTestRecord(
                                         serial_number=slot['serial_number'],
