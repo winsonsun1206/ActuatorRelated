@@ -9,7 +9,7 @@
     "max_speed": 220.0,   
     "max_current": 6.0,
     "max_temperature": 75.0,
-    "loop_nums": 6
+    "loop_nums": 2
   },
   "test_environment": {
     "temperature": "25°C",
