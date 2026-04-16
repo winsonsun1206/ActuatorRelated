@@ -247,7 +247,7 @@ class RabbitmqCusumer:
                                 #get the max temperature from udp comm
                                 result_raw, _udp =client_socket.recvfrom(BUFFER_SIZE)
                                 result_data = json.loads(result_raw.decode('utf-8')).get("data", {})
-                                print(f"error_code: {result_data.get("error_code", {}).get(str(slot['can_msg_id']), 'unknown')}")
+                                print(f"error_code: {result_data.get("error_code", {}).get('3')}")
                                 for slot in test_slots:
                                         result_obj= RuninTestRecord(
                                         serial_number=slot['serial_number'],
@@ -260,7 +260,7 @@ class RabbitmqCusumer:
                                         operator_name=task.get('operator_name', 'unknown_operator_name').strip(),
                                         test_duration_sec=(datetime.datetime.now() - start_time).total_seconds(),
                                         calibration_result=result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
-                                        final_status='PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), 'unknown') == '0' else 'FAIL',
+                                        final_status='PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), 999) == 0 else 'FAIL',
                                         start_current_a=10.5,
                                         voltage_v=24.0,
                                         max_temp_c=result_data.get("max_temperature", {}).get(str(slot['can_msg_id']), -273.0),
