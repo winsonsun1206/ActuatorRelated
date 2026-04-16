@@ -48,6 +48,8 @@ class TimeScaleDBHandler_can0:
         self.sw_version = dict()
         self.calibration = dict()
         self.error_code = dict()
+        self.start_current = dict()
+        self.end_current = dict()
 
 
     def read_canbus(self, task_queue, can_bus, stop_event):
@@ -93,7 +95,7 @@ class TimeScaleDBHandler_can0:
                     case '0x48':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "VELOCITY_Radps", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad/s", 
                                         "timestamp": datetime.now().isoformat()}
-                        #print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
+                        print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x49':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_IQ_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
                                         "timestamp": datetime.now().isoformat()}
