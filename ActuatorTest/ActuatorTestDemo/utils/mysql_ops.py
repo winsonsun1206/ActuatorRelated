@@ -80,32 +80,31 @@ def delete_test_record_by_sn(serial_number: str):
             
 if __name__ == "__main__":
 
-    new_record = RuninTestRecord(
-        serial_number="SN123456",
-        joint_name="joint",
-        part_number="PN123456",
-        can_id=0x1,
-        hw_version="1.0",
-        sw_version="1.0",
-        operator_id="OP001",
-        operator_name="Alice",
-        test_duration_sec=3600,
-        calibration_result="Calibrated successfully",
-        final_status="PASS",
-        start_current_a=10.5,
-        voltage_v=12.0,
-        max_temp_c=75.0,
-        current_shift=0.5,
-        forward_viscosity=100.0,
-        reverse_viscosity=120.0,
-        performance_details={"torque": [10, 20, 30], "speed": [100, 200, 300]}
-    )
+    # new_record = RuninTestRecord(
+    #     serial_number="SN123456",
+    #     joint_name="joint",
+    #     part_number="PN123456",
+    #     can_id=0x1,
+    #     hw_version="1.0",
+    #     sw_version="1.0",
+    #     operator_id="OP001",
+    #     operator_name="Alice",
+    #     test_duration_sec=3600,
+    #     calibration_result="Calibrated successfully",
+    #     final_status="PASS",
+    #     start_current_a=10.5,
+    #     voltage_v=12.0,
+    #     max_temp_c=75.0,
+    #     current_shift=0.5,
+    #     forward_viscosity=100.0,
+    #     reverse_viscosity=120.0,
+    #     performance_details={"torque": [10, 20, 30], "speed": [100, 200, 300]}
+    # )
     
-    insert_test_record(new_record)
+    # insert_test_record(new_record)
     
-    update_test_record("SN123456", final_status="FAIL")
+    # update_test_record("SN123456", final_status="FAIL")
     
-    print(get_test_record_by_sn("SN123456"))
+    # print(get_test_record_by_sn("SN123456"))
     
-    delete_test_record_by_sn("SN123456")
-    deleted_record = get_test_record_by_sn("SN123456")
+    delete_test_record_by_sn("wer")

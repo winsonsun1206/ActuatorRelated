@@ -43,6 +43,7 @@ class TimeScaleDBHandler_can0:
         self.bus0_buffer= list()
         self.redis_handler = RedisHandler(host=host, port=6379, db=redis_bank)   
         self.station_name = station_name
+        self.max_temp = dict()
 
 
     def read_canbus(self, task_queue, can_bus, stop_event):
@@ -65,7 +66,9 @@ class TimeScaleDBHandler_can0:
                 continue
             elif monitor_task!="False" or monitoring== True:
                 if  monitor_task != "False" and monitoring == False:
+                    ### in this condition, it means the monitoring just starts, we need to parse the mapping info sent from the UDP server, and then start monitoring the CAN bus
                     mapping_dict = parse_mapping_id_sn(monitor_task)
+                    self.max_temp = dict()  # reset max temp when new monitoring starts 
                     print(f"Parsed mapping dictionary: {mapping_dict}")
                 
                 monitoring = True
@@ -95,6 +98,9 @@ class TimeScaleDBHandler_can0:
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_ID_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
                                         "timestamp": datetime.now().isoformat()}
                         #print(f"MCL_CURRENT_ID_A_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
+                    case '0x4b':
+                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "IC_Voltage", "data": struct.unpack('<f', msg.data[1:5])[0]/10, "unit":"V", 
+                                            "timestamp": datetime.now().isoformat()}
                     case '0x4c':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "BOARD_TEMP__degC", "data": struct.unpack('<f', msg.data[1:5])[0]/10, "unit":"°C", 
                                             "timestamp": datetime.now().isoformat()}
@@ -102,17 +108,19 @@ class TimeScaleDBHandler_can0:
                     case '0x4d':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "MOTOR_TEMP_degC", "data": struct.unpack('<f', msg.data[1:5])[0]/10, "unit":"°C", 
                                             "timestamp": datetime.now().isoformat()}
+                        temperature = struct.unpack('<f', msg.data[1:5])[0]/10
+                        self.max_temp[can_bus_id] = temperature if temperature > self.max_temp.get(can_bus_id, float('-inf')) else self.max_temp.get(can_bus_id, float('-inf'))
                         #print(f"MCL_TEMP_MOTOR_ddegC_FB:{struct.unpack('<i', msg.data[1:5])[0]/10}"+u"\u2103"+".")
                     case '0x41':  #status
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "STATUS", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now().isoformat()}
                         status = struct.unpack('<i', msg.data[1:5])[0]
-                        self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_status".strip(), status)  
+                        #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_status".strip(), status)  
                         #print(f"receive running status: {status}")
                     case '0x42':  #Calibration
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CALIBRATION", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now().isoformat()}
-                        self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_calibration".strip(), struct.unpack('<i', msg.data[1:5])[0])    
+                        #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_calibration".strip(), struct.unpack('<i', msg.data[1:5])[0])    
                         #print(f"redis::{station_name}_can0_bus_{can_bus_id}_{serial_number}_calibration", struct.unpack('<i', msg.data[1:5])[0])
                         #calibrated_fb = struct.unpack('<i', msg.data[1:5])[0]
                         #print(f"receive calibration status: {calibrated_fb}")
@@ -120,13 +128,13 @@ class TimeScaleDBHandler_can0:
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number, "variable_name": "ERROR", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now().isoformat()}
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error", struct.unpack('<i', msg.data[1:5])[0])    
-                        self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error".strip(), struct.unpack('<i', msg.data[1:5])[0])    
+                        #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error".strip(), struct.unpack('<i', msg.data[1:5])[0])    
 
                         # print("receive error status")
                     case '0x44': #warning???
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "WARNING", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now().isoformat()}
-                        self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_warning".strip(), struct.unpack('<i', msg.data[1:5])[0])
+                        #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_warning".strip(), struct.unpack('<i', msg.data[1:5])[0])
                         
                         # warning_fb = struct.unpack('<i', msg.data[1:5])[0]
                         # print("receive warning status")
@@ -174,6 +182,9 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can0):
                         #  thread.join()
                          monitor = False
                          monitor_task.put_nowait("False")
+                         #sendback the test result through udp, starting from max temperature
+                         test_result= {"max_temperature": db_handler.max_temp}
+                         server_socket.sendto(json.dumps({"message": "test result", "data": test_result}).encode('utf-8'), (HOST, UDP_PORT))
                          continue
                     else:
                         print("starting monitoring thread")

@@ -243,6 +243,10 @@ class RabbitmqCusumer:
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_20)
                                 self.redis_handler.set_value(task_id, 0.5)
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_70)
+                                client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
+                                #get the max temperature from udp comm
+                                result_raw, _udp =client_socket.recvfrom(BUFFER_SIZE)
+                                print(f"Received test result from UDP server at {HOST}:{UDP_PORT}: {result_raw.decode('utf-8')}")
                                 for slot in test_slots:
                                         result_obj= RuninTestRecord(
                                         serial_number=slot['serial_number'],
@@ -258,7 +262,7 @@ class RabbitmqCusumer:
                                         final_status='PASS',
                                         start_current_a=10.5,
                                         voltage_v=24.0,
-                                        max_temp_c=75.0,
+                                        max_temp_c=-273.0,
                                         current_shift=0.5,
                                         forward_viscosity=0.0,
                                         reverse_viscosity=0.0,
@@ -266,8 +270,9 @@ class RabbitmqCusumer:
                                         performance_details={"empty": True}
                                     )
                                         insert_test_record(result_obj)
-                                #time.sleep(5.0)
-                                client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
+                        
+                                    
+                                
                                 print(f"Sent test completion message to UDP server at {HOST}:{UDP_PORT}")
                             except socket.timeout:
                                 print(f"Failed to send message to UDP server at {HOST}:{UDP_PORT} due to timeout.")

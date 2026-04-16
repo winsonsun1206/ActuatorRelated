@@ -95,6 +95,9 @@ class TimeScaleDBHandler_can1:
                         self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_ID_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
                                         "timestamp": datetime.now().isoformat()}
                         #print(f"MCL_CURRENT_ID_A_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
+                    case '0x4b':
+                        self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "IC_Voltage", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"V", 
+                                        "timestamp": datetime.now().isoformat()}
                     case '0x4c':
                         self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "BOARD_TEMP__degC", "data": struct.unpack('<f', msg.data[1:5])[0]/10, "unit":"°C", 
                                             "timestamp": datetime.now().isoformat()}
