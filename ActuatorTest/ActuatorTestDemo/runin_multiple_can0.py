@@ -246,7 +246,8 @@ class RabbitmqCusumer:
                                 client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                                 #get the max temperature from udp comm
                                 result_raw, _udp =client_socket.recvfrom(BUFFER_SIZE)
-                                print(f"Received test result from UDP server at {HOST}:{UDP_PORT}: {result_raw.decode('utf-8')}")
+                                result_data = json.loads(result_raw.decode('utf-8')).get("data", {})
+                                print(f"Received test result from UDP server at {HOST}:{UDP_PORT}: {result_data}")
                                 for slot in test_slots:
                                         result_obj= RuninTestRecord(
                                         serial_number=slot['serial_number'],
@@ -258,15 +259,16 @@ class RabbitmqCusumer:
                                         operator_id= task.get('operator_id', 'unknown_operator_id').strip(),
                                         operator_name=task.get('operator_name', 'unknown_operator_name').strip(),
                                         test_duration_sec=(datetime.datetime.now() - start_time).total_seconds(),
-                                        calibration_result='Calibrated successfully',
-                                        final_status='PASS',
+                                        calibration_result=result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
+                                        final_status='PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), '0x00') == '0x00' else 'FAIL',
                                         start_current_a=10.5,
                                         voltage_v=24.0,
-                                        max_temp_c=-273.0,
+                                        max_temp_c=result_data.get("max_temperature", {}).get(str(slot['can_msg_id']), -273.0),
                                         current_shift=0.5,
                                         forward_viscosity=0.0,
                                         reverse_viscosity=0.0,
                                         test_time= datetime.datetime.now(),
+                                        error_code=result_data.get("error_code", {}).get(str(slot['can_msg_id']), '0x00'),
                                         performance_details={"empty": True}
                                     )
                                         insert_test_record(result_obj)
