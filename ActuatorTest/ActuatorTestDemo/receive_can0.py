@@ -44,6 +44,10 @@ class TimeScaleDBHandler_can0:
         self.redis_handler = RedisHandler(host=host, port=6379, db=redis_bank)   
         self.station_name = station_name
         self.max_temp = dict()
+        self.hw_version = dict()
+        self.sw_version = dict()
+        self.calibration = dict()
+        self.error_code = dict()
 
 
     def read_canbus(self, task_queue, can_bus, stop_event):
@@ -120,6 +124,7 @@ class TimeScaleDBHandler_can0:
                     case '0x42':  #Calibration
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CALIBRATION", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now().isoformat()}
+                        self.calibration[can_bus_id] = struct.unpack('<i', msg.data[1:5])[0]
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_calibration".strip(), struct.unpack('<i', msg.data[1:5])[0])    
                         #print(f"redis::{station_name}_can0_bus_{can_bus_id}_{serial_number}_calibration", struct.unpack('<i', msg.data[1:5])[0])
                         #calibrated_fb = struct.unpack('<i', msg.data[1:5])[0]
@@ -127,6 +132,7 @@ class TimeScaleDBHandler_can0:
                     case '0x43':  #error??
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number, "variable_name": "ERROR", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now().isoformat()}
+                        self.error_code[can_bus_id] = struct.unpack('<i', msg.data[1:5])[0]
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error", struct.unpack('<i', msg.data[1:5])[0])    
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error".strip(), struct.unpack('<i', msg.data[1:5])[0])    
 
@@ -141,6 +147,16 @@ class TimeScaleDBHandler_can0:
                     case '0x45': #control mode
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number,  "variable_name": "CONTROL_MODE", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now().isoformat()}
+                        
+                    case '0x5d': # firmware_version
+                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number,  "variable_name": "FIRMWARE_VERSION", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
+                                        "timestamp": datetime.now().isoformat()}
+                        self.sw_version[can_bus_id] = struct.unpack('<i', msg.data[1:5])[0]
+                    case '0x5e': # hardware_version
+                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number,  "variable_name": "HARDWARE_VERSION", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
+                                        "timestamp": datetime.now().isoformat()}
+                        self.hw_version[can_bus_id] = struct.unpack('<i', msg.data[1:5])[0]
+                        
                         # control_mode = struct.unpack('<i', msg.data[1:5])[0] 
                         # print("receive control mode")
            
@@ -183,7 +199,7 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can0):
                          monitor = False
                          monitor_task.put_nowait("False")
                          #sendback the test result through udp, starting from max temperature
-                         test_result= {"max_temperature": db_handler.max_temp}
+                         test_result= {"max_temperature": db_handler.max_temp, "hw_version": db_handler.hw_version, "sw_version": db_handler.sw_version, "calibration": db_handler.calibration, "error_code": db_handler.error_code}
                          server_socket.sendto(json.dumps({"message": "test result", "data": test_result}).encode('utf-8'), (HOST, UDP_PORT))
                          continue
                     else:
