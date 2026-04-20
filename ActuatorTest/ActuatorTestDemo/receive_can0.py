@@ -50,6 +50,10 @@ class TimeScaleDBHandler_can0:
         self.error_code = dict()
         self.start_current = dict()
         self.end_current = dict()
+        self.current = dict()
+        self.voltage = dict()
+        self.current_drift = dict()
+        self.r_voltage = dict()
 
 
     def read_canbus(self, task_queue, can_bus, stop_event):
@@ -75,6 +79,14 @@ class TimeScaleDBHandler_can0:
                     ### in this condition, it means the monitoring just starts, we need to parse the mapping info sent from the UDP server, and then start monitoring the CAN bus
                     mapping_dict = parse_mapping_id_sn(monitor_task)
                     self.max_temp = dict()  # reset max temp when new monitoring starts 
+                    self.calibration = dict()  # reset calibration status when new monitoring starts
+                    self.error_code = dict()  # reset error code when new monitoring starts 
+                    self.start_current = dict()  # reset start current when new monitoring starts
+                    self.end_current = dict()  # reset end current when new monitoring starts
+                    self.current = dict()  # reset current when new monitoring starts
+                    self.voltage = dict()  # reset voltage when new monitoring starts
+                    self.current_drift = dict()  # reset current drift when new monitoring starts
+                    self.r_voltage = dict()  # reset voltage when new monitoring starts
                     print(f"Parsed mapping dictionary: {mapping_dict}")
                 
                 monitoring = True
@@ -95,7 +107,13 @@ class TimeScaleDBHandler_can0:
                     case '0x48':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "VELOCITY_Radps", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad/s", 
                                         "timestamp": datetime.now().isoformat()}
-                        print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
+                        #print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
+                        velocity = struct.unpack('<f', msg.data[1:5])[0]
+                        if abs(velocity) > 152 and self.start_current.get(can_bus_id) is None:
+                            self.start_current[can_bus_id] = self.current.get(can_bus_id, 0)
+                        if abs(velocity) > 152 and self.start_current.get(can_bus_id)>0:
+                            self.r_voltage[can_bus_id] = self.voltage[can_bus_id] if self.voltage.get(can_bus_id) is not None else 0
+                            self.current_drift[can_bus_id] = (self.current[can_bus_id] - self.start_current.get(can_bus_id, 0))/self.start_current.get(can_bus_id, 1)
                     case '0x49':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_IQ_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
                                         "timestamp": datetime.now().isoformat()}
@@ -103,10 +121,12 @@ class TimeScaleDBHandler_can0:
                     case '0x4a':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_ID_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
                                         "timestamp": datetime.now().isoformat()}
+                        self.current[can_bus_id] = struct.unpack('<f', msg.data[1:5])[0]
                         #print(f"MCL_CURRENT_ID_A_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x4b':
-                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "IC_Voltage", "data": struct.unpack('<f', msg.data[1:5])[0]/10, "unit":"V", 
+                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "IC_Voltage", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"V", 
                                             "timestamp": datetime.now().isoformat()}
+                        self.voltage[can_bus_id] = struct.unpack('<f', msg.data[1:5])[0]
                     case '0x4c':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "BOARD_TEMP__degC", "data": struct.unpack('<i', msg.data[1:5])[0]/10, "unit":"°C", 
                                             "timestamp": datetime.now().isoformat()}
@@ -201,7 +221,8 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can0):
                          monitor = False
                          monitor_task.put_nowait("False")
                          #sendback the test result through udp, starting from max temperature
-                         test_result= {"max_temperature": db_handler.max_temp, "calibration": db_handler.calibration, "error_code": db_handler.error_code}
+                         test_result= {"max_temperature": db_handler.max_temp, "calibration": db_handler.calibration, "error_code": db_handler.error_code,
+                                       "start_current": db_handler.start_current, "current_drift": db_handler.current_drift, "r_voltage": db_handler.r_voltage}
                          server_socket.sendto(json.dumps({"message": "test result", "data": test_result}).encode('utf-8'), (udp_ip[0], udp_ip[1]))
                          continue
                     else:
@@ -214,17 +235,7 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can0):
                             current_task = "calibration"
                         else:
                             current_task = "runin_test"
-                    # if current_task == "calibration":
-                    #     if calibrated_fb & 0x01 ==1 and status & 0x1C == 0:
-                    #             server_socket.sendto(json.dumps({"message":"motor calibration completed"}).encode('utf-8'), (HOST, UDP_PORT))
-                    #             continue
-                    #     if calibrated_fb & 0x02 ==1 and status & 0x1C == 0:
-                    #             server_socket.sendto(json.dumps({"message":"encoder calibration completed"}).encode('utf-8'), (HOST, UDP_PORT))
-                    #             continue
-                    #     if calibrated_fb & 0x04 ==1 and status & 0x1C == 0:
-                    #             server_socket.sendto(json.dumps({"message":"electrical calibration completed"}).encode('utf-8'), (HOST, UDP_PORT))
-                    #             continue
-
+              
      
             except KeyboardInterrupt:
                 print("\nProgramm interruptted by user.")
