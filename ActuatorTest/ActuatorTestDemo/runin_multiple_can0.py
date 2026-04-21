@@ -19,6 +19,7 @@ from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 from pathlib import Path
 from utils.mysql_ops import insert_test_record
+import logging
 
 
 
@@ -248,6 +249,7 @@ class RabbitmqCusumer:
                                 result_raw, _udp =client_socket.recvfrom(BUFFER_SIZE)
                                 result_data = json.loads(result_raw.decode('utf-8')).get("data", {})
                                 print(f"error_code: {result_data.get("error_code", {}).get('3')}")
+                                print(f"data received from UDP server: {result_data}")
                                 for slot in test_slots:
                                         result_obj= RuninTestRecord(
                                         serial_number=slot['serial_number'],

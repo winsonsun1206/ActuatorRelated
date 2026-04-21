@@ -109,9 +109,9 @@ class TimeScaleDBHandler_can0:
                                         "timestamp": datetime.now().isoformat()}
                         #print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                         velocity = struct.unpack('<f', msg.data[1:5])[0]
-                        if abs(velocity) > 150 and self.start_current.get(can_bus_id) is None:
+                        if abs(velocity) > 152 and self.start_current.get(can_bus_id) is None:
                             self.start_current[can_bus_id] = self.current.get(can_bus_id, 0)
-                        if abs(velocity) > 150 and self.start_current.get(can_bus_id)>0:
+                        if abs(velocity) > 152 and self.start_current.get(can_bus_id)>0:
                             self.r_voltage[can_bus_id] = self.voltage[can_bus_id] if self.voltage.get(can_bus_id) is not None else 0
                             self.current_drift[can_bus_id] = (self.current[can_bus_id] - self.start_current.get(can_bus_id, 0))/self.start_current.get(can_bus_id, 1)
                     case '0x49':
