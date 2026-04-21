@@ -2,7 +2,7 @@ import os
 import can
 import time
 import signal
-from datetime import datetime
+from datetime import datetime, timedelta
 import struct
 from utils.convertion import hex_to_float
 import threading
@@ -53,7 +53,6 @@ class TimeScaleDBHandler_can0:
         self.current = dict()
         self.voltage = dict()
         self.current_drift = dict()
-        self.r_voltage = dict()
 
 
     def read_canbus(self, task_queue, can_bus, stop_event):
@@ -86,7 +85,7 @@ class TimeScaleDBHandler_can0:
                     self.current = dict()  # reset current when new monitoring starts
                     self.voltage = dict()  # reset voltage when new monitoring starts
                     self.current_drift = dict()  # reset current drift when new monitoring starts
-                    self.r_voltage = dict()  # reset voltage when new monitoring starts
+                    self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
                     print(f"Parsed mapping dictionary: {mapping_dict}")
                 
                 monitoring = True
@@ -109,24 +108,36 @@ class TimeScaleDBHandler_can0:
                                         "timestamp": datetime.now().isoformat()}
                         #print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                         velocity = struct.unpack('<f', msg.data[1:5])[0]
-                        if abs(velocity) > 152 and self.start_current.get(can_bus_id) is None:
-                            self.start_current[can_bus_id] = self.current.get(can_bus_id, 0)
-                        if abs(velocity) > 152 and self.start_current.get(can_bus_id)>0:
-                            self.r_voltage[can_bus_id] = self.voltage[can_bus_id] if self.voltage.get(can_bus_id) is not None else 0
-                            self.current_drift[can_bus_id] = (self.current[can_bus_id] - self.start_current.get(can_bus_id, 0))/self.start_current.get(can_bus_id, 1)
+                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is None:  # assuming 152 rad/s as the threshold for high speed, this value can be adjusted based on actual requirement
+                            self.high_speed_start_time[can_bus_id] = datetime.now()
+                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and self.start_current[can_bus_id] is None:
+                            if datetime.now() - self.high_speed_start_time[can_bus_id] > timedelta(seconds=3):  # if high speed lasts for more than 3 seconds, we consider it as a valid high speed state, this duration can also be adjusted
+                                # if high speed lasts for more than 5 seconds, we consider it as a valid high speed state, this duration can also be adjusted
+                                self.start_current[can_bus_id] = self.current.get(can_bus_id, 0.0)
+                                
+                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and datetime.now() - self.high_speed_start_time[can_bus_id] > timedelta(seconds=50) and self.end_current.get(can_bus_id) is None:
+                                self.end_current[can_bus_id] = self.current.get(can_bus_id, 0.0)
+                                self.current_drift[can_bus_id] = (self.end_current[can_bus_id] - self.start_current[can_bus_id])/ self.start_current[can_bus_id]
+                                # if high speed lasts for more than 3 seconds, we consider it as a valid high speed state, this duration can also be adjusted
+                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "high_speed_current", "data": self.current[can_bus_id], "unit":"A", 
+                                        "timestamp": datetime.now().isoformat()}
+                            
                     case '0x49':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_IQ_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
                                         "timestamp": datetime.now().isoformat()}
+                        self.current[can_bus_id] = struct.unpack('<f', msg.data[1:5])[0]
                         #print(f"MCL_CURRENT_IQ_A_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x4a':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_ID_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
                                         "timestamp": datetime.now().isoformat()}
-                        self.current[can_bus_id] = struct.unpack('<f', msg.data[1:5])[0]
+                        
                         #print(f"MCL_CURRENT_ID_A_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x4b':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "IC_Voltage", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"V", 
                                             "timestamp": datetime.now().isoformat()}
                         self.voltage[can_bus_id] = struct.unpack('<f', msg.data[1:5])[0]
+                        
+                        
                     case '0x4c':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "BOARD_TEMP__degC", "data": struct.unpack('<i', msg.data[1:5])[0]/10, "unit":"°C", 
                                             "timestamp": datetime.now().isoformat()}
@@ -222,7 +233,7 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can0):
                          monitor_task.put_nowait("False")
                          #sendback the test result through udp, starting from max temperature
                          test_result= {"max_temperature": db_handler.max_temp, "calibration": db_handler.calibration, "error_code": db_handler.error_code,
-                                       "start_current": db_handler.start_current, "current_drift": db_handler.current_drift, "r_voltage": db_handler.r_voltage}
+                                       "start_current": db_handler.start_current, "current_drift": db_handler.current_drift, "r_voltage": db_handler.voltage}
                          server_socket.sendto(json.dumps({"message": "test result", "data": test_result}).encode('utf-8'), (udp_ip[0], udp_ip[1]))
                          continue
                     else:
