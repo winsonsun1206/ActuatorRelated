@@ -1,0 +1,67 @@
+import psycopg2
+import psycopg2.extras
+import datetime
+import json
+import os
+import dotenv
+
+dotenv.load_dotenv(dotenv_path= os.path.join(os.path.dirname(__file__), '../secrets/.env'))
+
+postgresql_connection = psycopg2.connect(host = os.getenv("POSTGRESQL_HOST"), 
+                            port = os.getenv("POSTGRESQL_PORT"), database = os.getenv("POSTGRESQL_DB"), 
+                            user = os.getenv("POSTGRESQL_USER"), password = os.getenv("POSTGRESQL_PASSWORD"))
+
+cursor = postgresql_connection.cursor()
+
+def upload_test_record(record_list):
+    insert_query = f"""
+    INSERT INTO {os.getenv("POSTGRESQL_DB")} (
+        can_bus, 
+        can_bus_id, 
+        serial_number, 
+        part_number, 
+        variable_name, 
+        data, 
+        unit, 
+        timestamp
+    ) VALUES %s
+"""
+    template = """(
+        %(can_bus)s, 
+        %(can_bus_id)s, 
+        %(serial_number)s, 
+        %(part_number)s, 
+        %(variable_name)s, 
+        %(data)s, 
+        %(unit)s, 
+        %(timestamp)s
+    )"""
+    try:
+        psycopg2.extras.execute_values(cursor, insert_query, record_list, template=template, page_size= len(record_list))
+        postgresql_connection.commit()
+        
+    except Exception as e:
+        postgresql_connection.rollback()
+        print(f"An error occurred: {e}")
+        
+    finally:
+        cursor.close()
+        postgresql_connection.close()
+        
+        
+def fetch_records_by_serial_number(serial_number):
+    query = f"SELECT * FROM {os.getenv('POSTGRESQL_DB')} WHERE serial_number = %s"
+    try:
+        cursor.execute(query, (serial_number,))
+        records = cursor.fetchall()
+        return records
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+    finally:
+        cursor.close()
+        postgresql_connection.close()
+
+if __name__ == "__main__":
+    # Example usage
+    print(fetch_records_by_serial_number("SN123456789"))

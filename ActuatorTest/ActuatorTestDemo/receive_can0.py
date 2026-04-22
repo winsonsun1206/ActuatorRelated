@@ -197,7 +197,9 @@ class TimeScaleDBHandler_can0:
                 if len(self.bus0_buffer) > self.BUFFER_SIZE:
                     ####temparily just print the feedback, later will save to database
                     ###clear the buffer
-                    print(f"{datetime.now().isoformat()} :Flushing CAN bus 0 feedback buffer with {len(self.bus0_buffer )} entries.")
+                    #print(f"{datetime.now().isoformat()} :Flushing CAN bus 0 feedback buffer with {len(self.bus0_buffer )} entries.")
+                    #replace a print task with real postgresql insertion task:
+                    
                     self.bus0_buffer.clear()
         
                 
