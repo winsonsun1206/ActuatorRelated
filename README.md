@@ -13,6 +13,11 @@
 - 查看日志文件：cat /home/rivr-test1/git_pull.log                        cat /home/rivr-test2/git_pull.log
 
 - 代码(两台RPi用户名分别为rivr-test1 rivr-test2)：
+- 配置 Cron 定时任务:
+-   打开当前用户的 Crontab 编辑器：
+-   crontab -e
+-   在文件的最后一行添加以下内容：
+-       0 0 * * * /bin/bash /home/user/auto_pull.sh
 ```bash
 #!/bin/bash
 
