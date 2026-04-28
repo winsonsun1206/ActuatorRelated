@@ -4,6 +4,7 @@ import datetime
 import json
 import os
 import dotenv
+from psycopg2 import pool
 
 dotenv.load_dotenv(dotenv_path= os.path.join(os.path.dirname(__file__), '../secrets/.env'))
 
@@ -14,7 +15,7 @@ dotenv.load_dotenv(dotenv_path= os.path.join(os.path.dirname(__file__), '../secr
 # session_maker = psycopg2.extras.RealDictCursor(postgresql_connection)
 
 # cursor = postgresql_connection.cursor()
-postgresql_connection_pool = psycopg2.pool.SimpleConnectionPool(1, 5, host = os.getenv("POSTGRESQL_HOST"),
+postgresql_connection_pool = pool.SimpleConnectionPool(1, 5, host = os.getenv("POSTGRESQL_HOST"),
                             port = os.getenv("POSTGRESQL_PORT"), database = os.getenv("POSTGRESQL_DB"),
                             user = os.getenv("POSTGRESQL_USER"), password = os.getenv("POSTGRESQL_PASSWORD"))
 
