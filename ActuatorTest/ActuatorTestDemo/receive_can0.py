@@ -12,6 +12,7 @@ import queue
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 from utils.parsing_mapping_id_sn import parse_mapping_id_sn, get_sn_pn_by_id
+from utils.pqs_handler import upload_test_record
 # os.system('sudo ip link set can1 type can bitrate 1000000')
 # os.system('sudo ifconfig can1 txqueuelen 65536')
 # os.system('sudo ifconfig can1 up')
@@ -110,16 +111,16 @@ class TimeScaleDBHandler_can0:
                         velocity = struct.unpack('<f', msg.data[1:5])[0]
                         if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is None:  # assuming 152 rad/s as the threshold for high speed, this value can be adjusted based on actual requirement
                             self.high_speed_start_time[can_bus_id] = datetime.now()
-                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and self.start_current[can_bus_id] is None:
+                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and self.start_current.get(can_bus_id) is None:
                             if datetime.now() - self.high_speed_start_time[can_bus_id] > timedelta(seconds=3):  # if high speed lasts for more than 3 seconds, we consider it as a valid high speed state, this duration can also be adjusted
                                 # if high speed lasts for more than 5 seconds, we consider it as a valid high speed state, this duration can also be adjusted
                                 self.start_current[can_bus_id] = self.current.get(can_bus_id, 0.0)
                                 
-                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and datetime.now() - self.high_speed_start_time[can_bus_id] > timedelta(seconds=50) and self.end_current.get(can_bus_id) is None:
+                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and datetime.now() - self.high_speed_start_time.get(can_bus_id) > timedelta(seconds=50) and self.end_current.get(can_bus_id) is None:
                                 self.end_current[can_bus_id] = self.current.get(can_bus_id, 0.0)
                                 self.current_drift[can_bus_id] = (self.end_current[can_bus_id] - self.start_current[can_bus_id])/ self.start_current[can_bus_id]
                                 # if high speed lasts for more than 3 seconds, we consider it as a valid high speed state, this duration can also be adjusted
-                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "high_speed_current", "data": self.current[can_bus_id], "unit":"A", 
+                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "high_speed_current", "data": self.current.get(can_bus_id, 0.0), "unit":"A", 
                                         "timestamp": datetime.now().isoformat()}
                             
                     case '0x49':
@@ -199,7 +200,7 @@ class TimeScaleDBHandler_can0:
                     ###clear the buffer
                     #print(f"{datetime.now().isoformat()} :Flushing CAN bus 0 feedback buffer with {len(self.bus0_buffer )} entries.")
                     #replace a print task with real postgresql insertion task:
-                    
+                    upload_test_record(self.bus0_buffer)
                     self.bus0_buffer.clear()
         
                 
