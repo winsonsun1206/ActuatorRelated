@@ -233,7 +233,7 @@ class RabbitmqCusumer:
                         serial_numbers = [slot['serial_number'] for slot in test_slots]
                         can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]
                         #get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id):
-                        #device_ids = [get_device_id_from_cache(postgresql_connection_pool.getconn(), serial_number, part_number, can_msg_id) for serial_number, part_number, can_msg_id in zip(serial_numbers, part_numbers, can_msg_addresses)]
+                        device_ids = [get_device_id_from_cache(postgresql_connection_pool.getconn(), serial_number, part_number, can_msg_id) for serial_number, part_number, can_msg_id in zip(serial_numbers, part_numbers, can_msg_addresses)]
                         seq_file_20 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
                         seq_file_70 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_70.json'
                         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
