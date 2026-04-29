@@ -265,7 +265,7 @@ class RabbitmqCusumer:
                                         operator_id= task.get('operator_id', 'unknown_operator_id').strip(),
                                         operator_name=task.get('operator_name', 'unknown_operator_name').strip(),
                                         test_duration_sec=(datetime.datetime.now() - start_time).total_seconds(),
-                                        calibration = result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
+                                        calibration_result = result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
                                         final_status='PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), 999) == 0 else 'FAIL',
                                         start_current_a=result_data.get("start_current", {}).get(str(slot['can_msg_id']), 0.0),
                                         voltage_v=result_data.get("r_voltage", {}).get(str(slot['can_msg_id']), 0.0),
