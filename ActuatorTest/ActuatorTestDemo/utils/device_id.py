@@ -3,7 +3,7 @@ import psycopg2
 import dotenv
 import os
 from datetime import datetime, timedelta
-from pqs_handler import postgresql_connection_pool
+#from pqs_handler import postgresql_connection_pool
 
     
 dotenv.load_dotenv(dotenv_path= os.path.join(os.path.dirname(__file__), '../secrets/.env'))
@@ -40,11 +40,11 @@ def get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id):
         return device_id
     
     
-if __name__ == "__main__":
-    # for testing purpose, we can run this script independently to test the device id retrieval and caching functionality
-    pgs_conn = postgresql_connection_pool.getconn()
-    serial_number = "SN123456"
-    partnumber = "PN654321"
-    can_msg_id = 0x123
-    device_id = get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id)
-    print(f"Device ID for serial number {serial_number} and part number {partnumber} is: {device_id}")
+# if __name__ == "__main__":
+#     # for testing purpose, we can run this script independently to test the device id retrieval and caching functionality
+#     pgs_conn = postgresql_connection_pool.getconn()
+#     serial_number = "SN123456"
+#     partnumber = "PN654321"
+#     can_msg_id = 0x123
+#     device_id = get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id)
+#     print(f"Device ID for serial number {serial_number} and part number {partnumber} is: {device_id}")
