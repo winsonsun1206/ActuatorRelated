@@ -19,7 +19,7 @@ class RuninTestRecord(Base):
     test_time = Column(DateTime, server_default=func.now())
     test_duration_sec = Column(Float)
     
-    calibration_result = Column(String(100))
+    calibration = Column(String(100))
     error_code = Column(String(100), default='0x00')
     final_status = Column(Enum('PASS', 'FAIL'), nullable=False)
     

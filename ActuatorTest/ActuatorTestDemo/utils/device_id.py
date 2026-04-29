@@ -36,3 +36,15 @@ def get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id):
             
         redis_cache.set(cache_key, device_id)
         return device_id
+    
+    
+if __name__ == "__main__":
+    # for testing purpose, we can run this script independently to test the device id retrieval and caching functionality
+    pgs_conn = psycopg2.connect(host = os.getenv("POSTGRESQL_HOST"), 
+                                port = os.getenv("POSTGRESQL_PORT"), database = os.getenv("POSTGRESQL_DB"), 
+                                user = os.getenv("POSTGRESQL_USER"), password = os.getenv("POSTGRESQL_PASSWORD"))
+    serial_number = "SN123456"
+    partnumber = "PN654321"
+    can_msg_id = 0x123
+    device_id = get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id)
+    print(f"Device ID for serial number {serial_number} and part number {partnumber} is: {device_id}")
