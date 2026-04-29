@@ -13,9 +13,7 @@ from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 from utils.parsing_mapping_id_sn import parse_mapping_id_sn, get_sn_pn_by_id
 from utils.pqs_handler import upload_test_record
-# os.system('sudo ip link set can1 type can bitrate 1000000')
-# os.system('sudo ifconfig can1 txqueuelen 65536')
-# os.system('sudo ifconfig can1 up')
+current_sampling_interval = 800
 
 
 #can1 = can.interface.Bus(channel='can1', bustype='socketcan')  # socketcan_native
@@ -116,7 +114,7 @@ class TimeScaleDBHandler_can1:
                                 # if high speed lasts for more than 5 seconds, we consider it as a valid high speed state, this duration can also be adjusted
                                 self.start_current[can_bus_id] = self.current.get(can_bus_id, 0.0)
                                 
-                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and datetime.now() - self.high_speed_start_time.get(can_bus_id) > timedelta(seconds=50) and self.end_current.get(can_bus_id) is None:
+                        if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and datetime.now() - self.high_speed_start_time.get(can_bus_id) > timedelta(seconds= current_sampling_interval) and self.end_current.get(can_bus_id) is None:
                                 self.end_current[can_bus_id] = self.current.get(can_bus_id, 0.0)
                                 self.current_drift[can_bus_id] = (self.end_current[can_bus_id] - self.start_current[can_bus_id])/ self.start_current[can_bus_id]
                                 # if high speed lasts for more than 3 seconds, we consider it as a valid high speed state, this duration can also be adjusted
