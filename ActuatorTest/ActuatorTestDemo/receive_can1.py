@@ -200,7 +200,7 @@ class TimeScaleDBHandler_can1:
                     ###clear the buffer
                     #print(f"{datetime.now().isoformat()} :Flushing CAN bus 1 feedback buffer with {len(self.bus1_buffer )} entries.")
                     #replace a print task with real postgresql insertion task:
-                    upload_test_record(self.bus1_buffer)
+                    #upload_test_record(self.bus1_buffer)
                     self.bus1_buffer.clear()
         
                 
