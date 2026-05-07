@@ -56,7 +56,7 @@ class TimeScaleDBHandler_can1:
 
     def read_canbus(self, task_queue, can_bus, stop_event):
         # can_bus = can.interface.Bus(channel= canbus, interface='socketcan')
-        feedback_list = [hex(x) for x in range(0x41, 0x4d+1)]
+        feedback_list = [hex(x) for x in range(0x51, 0x90+1)]
         monitoring = False
         monitor_task = "False"
         mapping_dict = {}
