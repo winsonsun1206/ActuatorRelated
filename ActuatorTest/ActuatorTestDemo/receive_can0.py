@@ -87,9 +87,9 @@ class TimeScaleDBHandler_can0:
                     self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
                     print(f"Parsed mapping dictionary: {mapping_dict}")
                     heartbeat_starttime = datetime.now()
-                    
+                can_list = [int(can_addres) for can_addres in mapping_dict.get("can_msg_addresses", []) if can_addres is not None]
                 if datetime.now() - heartbeat_starttime > timedelta(seconds=1):
-                    send_heartbeat(can_bus, int(mapping_dict["can_msg_addresses"]))
+                    send_heartbeat("can0", can_list)
                     heartbeat_starttime = datetime.now()
                 monitoring = True
                 address = hex(msg.data[0])
