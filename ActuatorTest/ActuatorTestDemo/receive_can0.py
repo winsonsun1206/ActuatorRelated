@@ -9,6 +9,7 @@ import threading
 import socket
 import json
 import queue
+from utils.send_data import send_can_data, send_heartbeat
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 from utils.parsing_mapping_id_sn import parse_mapping_id_sn, get_sn_pn_by_id
@@ -85,7 +86,11 @@ class TimeScaleDBHandler_can0:
                     self.current_drift = dict()  # reset current drift when new monitoring starts
                     self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
                     print(f"Parsed mapping dictionary: {mapping_dict}")
-                
+                    heartbeat_starttime = datetime.now()
+                    
+                if datetime.now() - heartbeat_starttime > timedelta(seconds=1):
+                    send_heartbeat(can_bus, int(mapping_dict["can_msg_addresses"]))
+                    heartbeat_starttime = datetime.now()
                 monitoring = True
                 address = hex(msg.data[0])
                 if msg.arbitration_id not in range(256, 512) or address not in feedback_list:
