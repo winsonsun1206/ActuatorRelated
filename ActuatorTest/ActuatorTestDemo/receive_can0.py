@@ -86,11 +86,12 @@ class TimeScaleDBHandler_can0:
                     self.current_drift = dict()  # reset current drift when new monitoring starts
                     self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
                     print(f"Parsed mapping dictionary: {mapping_dict}")
-                    heartbeat_starttime = datetime.now()
-                can_list = [int(can_addres) for can_addres in mapping_dict.get("can_msg_addresses", []) if can_addres is not None]
-                if datetime.now() - heartbeat_starttime > timedelta(seconds=1):
-                    send_heartbeat("can0", can_list)
-                    heartbeat_starttime = datetime.now()
+                    self.heartbeat_starttime = datetime.now()
+                #can_list = [int(can_addres) for can_addres in mapping_dict.get("can_msg_addresses", []) if can_addres is not None]
+                if datetime.now() - self.heartbeat_starttime > timedelta(seconds=1):
+                    send_heartbeat("can0", mapping_dict.get("can_msg_addresses", []))
+                    print(f"Sent heartbeat message on can0 for CAN addresses: {mapping_dict.get('can_msg_addresses', [])}")
+                    self.heartbeat_starttime = datetime.now()
                 monitoring = True
                 address = hex(msg.data[0])
                 if msg.arbitration_id not in range(256, 512) or address not in feedback_list:
