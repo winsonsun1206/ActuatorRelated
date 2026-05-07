@@ -232,7 +232,7 @@ class RabbitmqCusumer:
                         part_numbers = [slot['part_number'] for slot in test_slots]
                         serial_numbers = [slot['serial_number'] for slot in test_slots]
                         can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]
-                        send_heartbeat("can0",can_msg_addresses)  # 在测试开始前发送心跳持续10秒，确保设备在线
+                          # 在测试开始前发送心跳持续10秒，确保设备在线
                         #get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id):
                         #device_ids = [get_device_id_from_cache(postgresql_connection_pool.getconn(), serial_number, part_number, can_msg_id) for serial_number, part_number, can_msg_id in zip(serial_numbers, part_numbers, can_msg_addresses)]
                         seq_file_20 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
@@ -245,7 +245,7 @@ class RabbitmqCusumer:
                                     "message": f"runin_test for Part Numbers: {','.join(part_numbers)}, Serial Numbers: {','.join(serial_numbers)}, CAN Addresses: {','.join(hex(addr) for addr in can_msg_addresses)}"
                                 }).encode('utf-8'), (HOST, UDP_PORT))
                                 print(f"Sent test start message to UDP server at {HOST}:{UDP_PORT}")
-                                
+                                time.sleep(1.5)
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_20)
                                 self.redis_handler.set_value(task_id, 0.5)
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_70)
