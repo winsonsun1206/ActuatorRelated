@@ -90,7 +90,7 @@ class TimeScaleDBHandler_can0:
                 #can_list = [int(can_addres) for can_addres in mapping_dict.get("can_msg_addresses", []) if can_addres is not None]
                 if datetime.now() - self.heartbeat_starttime > timedelta(seconds=1):
                     send_heartbeat("can0", mapping_dict.get("can_msg_addresses", []))
-                    print(f"Sent heartbeat message on can0 for CAN addresses: {mapping_dict.get('can_msg_addresses', [])}")
+                    #print(f"Sent heartbeat message on can0 for CAN addresses: {mapping_dict.get('can_msg_addresses', [])}")
                     self.heartbeat_starttime = datetime.now()
                 monitoring = True
                 address = hex(msg.data[0])

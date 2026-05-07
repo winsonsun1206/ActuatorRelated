@@ -246,6 +246,12 @@ class RabbitmqCusumer:
                                 }).encode('utf-8'), (HOST, UDP_PORT))
                                 print(f"Sent test start message to UDP server at {HOST}:{UDP_PORT}")
                                 time.sleep(1.5)
+                                #0001000000000000
+                                send_can_data(can_bus, can_msg_addresses, b'\x00\x01\x00\x00\x00\x00\x00\x00') 
+                                #0189FD8613000000
+                                send_can_data(can_bus, can_msg_addresses, b'\x01\x89\xfd\x86\x13\x00\x00\x00')
+                                #0303000000000000
+                                send_can_data(can_bus, can_msg_addresses, b'\x03\x03\x00\x00\x00\x00\x00\x00')  # 发送速度为0的消息以停止执行
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_20)
                                 self.redis_handler.set_value(task_id, 0.5)
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_70)
