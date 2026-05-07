@@ -44,7 +44,7 @@ def send_can_data(canbus:str,arbitration_id, data):
                         print("Failed to send message")
                         
 def send_heartbeat(canbus:str,arbitration_id):
-    heartbeat_data = b'\x01\x89\xfd\x86\x13\x00\x00\x00'  # 心跳数据
+    heartbeat_data = b'\x3F\x73\xC6\xFA\x85\x00\x00\x00' # 心跳数据
     send_can_data(canbus, arbitration_id, heartbeat_data)
 
 
