@@ -8,11 +8,11 @@ if __name__ == "__main__":
     print("Starting CAN connectivity check...")
     can_bus = input("Enter CAN bus to test (e.g., 'can0' or 'can1'): ")
     can_bus_interface = can.interface.Bus(channel=can_bus.strip(), interface='socketcan')
-    arbitration_id_list = int(input("Enter arbitration ID to test (e.g., 0x01): and press Enter: "), 16)
+    arbitration_id_list = [int(x, 16) for x in input("Enter arbitration ID to test (e.g., 0x01) use comma to seperate each id: and press Enter: ").split(',')]
     found_device = dict()
     start_time = datetime.now()
     while datetime.now() - start_time < timedelta(seconds=5):  # 设置一个超时时间，例如30秒
-        msg = can_bus_interface.recv(BUFFER_SIZE, timeout=1)  # 等待接收消息，设置适当的超时
+        msg = can_bus_interface.recv(BUFFER_SIZE)  # 等待接收消息，设置适当的超时
         address = hex(msg.data[0])
         if msg.arbitration_id not in range(256, 512):
                     continue
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     print("send heartbeat message...")
     while True:
         send_heartbeat(can_bus, arbitration_id_list)
-        print(f"Sent heartbeat message on {can_bus} for arbitration ID: {hex(arbitration_id_list)}")
+        #print(f"Sent heartbeat message on {can_bus} for arbitration ID: {arbitration_id_list}")
         time.sleep(1)
         
         
