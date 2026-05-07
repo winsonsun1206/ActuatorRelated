@@ -13,7 +13,7 @@ from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 from utils.parsing_mapping_id_sn import parse_mapping_id_sn, get_sn_pn_by_id
 from utils.pqs_handler import upload_test_record
-current_sampling_interval = 800
+current_sampling_interval = 3400
 
 
 #can1 = can.interface.Bus(channel='can1', bustype='socketcan')  # socketcan_native
