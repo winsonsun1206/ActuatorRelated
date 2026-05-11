@@ -3,7 +3,7 @@ import click
 import sys
 from utils.models import RuninTestRecord
 from utils.sequence_parse import parse_test_cases
-from utils.send_data import send_can_data
+from utils.send_data import send_can_data, send_heartbeat
 import can
 import time, datetime
 import struct
@@ -20,6 +20,8 @@ from utils.redis_handler import RedisHandler
 from pathlib import Path
 from utils.mysql_ops import insert_test_record
 import logging
+from utils.device_id import get_device_id_from_cache
+from utils.pqs_handler import postgresql_connection_pool
 
 
 
@@ -230,6 +232,9 @@ class RabbitmqCusumer:
                         part_numbers = [slot['part_number'] for slot in test_slots]
                         serial_numbers = [slot['serial_number'] for slot in test_slots]
                         can_msg_addresses = [slot['can_msg_id'] for slot in test_slots]
+                          # 在测试开始前发送心跳持续10秒，确保设备在线
+                        #get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id):
+                        #device_ids = [get_device_id_from_cache(postgresql_connection_pool.getconn(), serial_number, part_number, can_msg_id) for serial_number, part_number, can_msg_id in zip(serial_numbers, part_numbers, can_msg_addresses)]
                         seq_file_20 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_20.json'
                         seq_file_70 = f'{Path.home()}/ActuatorRelated/ActuatorTest/ActuatorTestDemo/resource/sequences/test_sequence_70.json'
                         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
@@ -240,7 +245,13 @@ class RabbitmqCusumer:
                                     "message": f"runin_test for Part Numbers: {','.join(part_numbers)}, Serial Numbers: {','.join(serial_numbers)}, CAN Addresses: {','.join(hex(addr) for addr in can_msg_addresses)}"
                                 }).encode('utf-8'), (HOST, UDP_PORT))
                                 print(f"Sent test start message to UDP server at {HOST}:{UDP_PORT}")
-                                
+                                time.sleep(1.5)
+                                #0001000000000000
+                                send_can_data(can_bus, can_msg_addresses, b'\x00\x01\x00\x00\x00\x00\x00\x00') 
+                                #0189FD8613000000
+                                send_can_data(can_bus, can_msg_addresses, b'\x01\x89\xfd\x86\x13\x00\x00\x00')
+                                #0303000000000000
+                                send_can_data(can_bus, can_msg_addresses, b'\x03\x03\x00\x00\x00\x00\x00\x00') 
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_20)
                                 self.redis_handler.set_value(task_id, 0.5)
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_70)
@@ -261,8 +272,8 @@ class RabbitmqCusumer:
                                         operator_id= task.get('operator_id', 'unknown_operator_id').strip(),
                                         operator_name=task.get('operator_name', 'unknown_operator_name').strip(),
                                         test_duration_sec=(datetime.datetime.now() - start_time).total_seconds(),
-                                        calibration_result=result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
-                                        final_status='PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), 999) == 0 else 'FAIL',
+                                        calibration_result = result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
+                                        final_status = 'PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), 999) == 0 else 'FAIL',
                                         start_current_a=result_data.get("start_current", {}).get(str(slot['can_msg_id']), 0.0),
                                         voltage_v=result_data.get("r_voltage", {}).get(str(slot['can_msg_id']), 0.0),
                                         max_temp_c=result_data.get("max_temperature", {}).get(str(slot['can_msg_id']), -273.0),

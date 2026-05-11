@@ -2,6 +2,8 @@ import os
 import can
 import time
 
+
+
 def send_can_data(canbus:str,arbitration_id, data):
     # 构造要发送的消息
     if canbus == 'can1':
@@ -40,6 +42,10 @@ def send_can_data(canbus:str,arbitration_id, data):
                         #print(f"Message sent on can0: {msg}")
                     except can.CanError:
                         print("Failed to send message")
+                        
+def send_heartbeat(canbus:str,arbitration_id):
+    heartbeat_data = b'\x3F\x73\xC6\xFA\x85\x00\x00\x00' # 心跳数据
+    send_can_data(canbus, arbitration_id, heartbeat_data)
 
 
 

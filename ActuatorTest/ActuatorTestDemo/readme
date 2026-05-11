@@ -29,7 +29,7 @@ cansend can1 003#0701000000000000
 # MCL_CALIBRATE_encoder_SENSOR
 cansend can1 003#0801000000000000
 #save the parameters to flash
-cansend can1 003#0C87A4429F000000
+cansend can1 003#0C9F42A487000000
 #LOAD parameters from flash
 cansend can1 003#0D01000000000000
 
