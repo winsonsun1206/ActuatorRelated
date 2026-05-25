@@ -1,18 +1,23 @@
 # ActuatorRelated
 # 树莓派 5 自动拉取任务说明
 
-- 设备名称: rivr-test1 (Raspberry Pi 5)
-- 用户名: rivr-test1
-- 脚本位置: /home/rivr-test1/auto_pull.sh
+- 设备名称: rivr-test1 (Raspberry Pi 5)                                 rivr-test2
+- 用户名: rivr-test1                                                    rivr-test2
+- 脚本位置: /home/rivr-test1/auto_pull.sh                               /home/rivr-test2/auto_pull.sh
 - 执行逻辑: 每天 00:00 自动执行 git pull origin main
-- 日志位置: /home/rivr-test1/git_pull.log
-- 配置内容: 0 0 * * * /bin/bash /home/rivr-test1/auto_pull.sh
+- 日志位置: /home/rivr-test1/git_pull.log                               /home/rivr-test2/git_pull.log
+- 配置内容: 0 0 * * * /bin/bash /home/rivr-test1/auto_pull.sh           /bin/bash /home/rivr-test2/auto_pull.sh
 - Windows 修改代码 -> 推送 (Push) 至 GitHub -> 树莓派定时拉取 (Pull) -> 自动更新
 
 - 手动运行：./auto_pull.sh 
-- 查看日志文件：cat /home/rivr-test1/git_pull.log
+- 查看日志文件：cat /home/rivr-test1/git_pull.log                        cat /home/rivr-test2/git_pull.log
 
-- 代码：
+- 代码(两台RPi用户名分别为rivr-test1 rivr-test2)：
+- 配置 Cron 定时任务:
+-   打开当前用户的 Crontab 编辑器：
+-   crontab -e
+-   在文件的最后一行添加以下内容：
+-       0 0 * * * /bin/bash /home/user/auto_pull.sh
 ```bash
 #!/bin/bash
 
