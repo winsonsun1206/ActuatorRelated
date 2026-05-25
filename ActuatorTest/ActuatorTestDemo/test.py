@@ -35,6 +35,9 @@ finally:
     # 关闭CAN通道
     os.system('sudo ifconfig can0 down')
     os.system('sudo ifconfig can1 down')
+    
+    
+
 
 
 # def connect_rabbitmq(queue_name='test_queue'):

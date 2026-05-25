@@ -268,7 +268,7 @@ class RabbitmqCusumer:
                                         part_number=slot['part_number'],
                                         can_id=slot['can_msg_id'],
                                         hw_version='1.19.0',
-                                        sw_version='0.40.6',
+                                        sw_version='1.55.0',
                                         operator_id= task.get('operator_id', 'unknown_operator_id').strip(),
                                         operator_name=task.get('operator_name', 'unknown_operator_name').strip(),
                                         test_duration_sec=(datetime.datetime.now() - start_time).total_seconds(),

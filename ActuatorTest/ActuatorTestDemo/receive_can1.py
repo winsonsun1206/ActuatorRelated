@@ -9,10 +9,13 @@ import threading
 import socket
 import json
 import queue
+from utils.device_id import get_device_id_from_cache
+from utils.pqs_handler import postgresql_connection_pool
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 from utils.parsing_mapping_id_sn import parse_mapping_id_sn, get_sn_pn_by_id
 from utils.pqs_handler import upload_test_record
+from utils.can_data_parsing import pivot_to_jsonb, insert_pivoted_data_to_db
 current_sampling_interval = 3080
 
 
@@ -76,6 +79,7 @@ class TimeScaleDBHandler_can1:
                 if  monitor_task != "False" and monitoring == False:
                     ### in this condition, it means the monitoring just starts, we need to parse the mapping info sent from the UDP server, and then start monitoring the CAN bus
                     mapping_dict = parse_mapping_id_sn(monitor_task)
+                    self.device_id_cache = None  # reset device id cache when new monitoring starts
                     self.max_temp = dict()  # reset max temp when new monitoring starts 
                     self.calibration = dict()  # reset calibration status when new monitoring starts
                     self.error_code = dict()  # reset error code when new monitoring starts 
@@ -85,14 +89,21 @@ class TimeScaleDBHandler_can1:
                     self.voltage = dict()  # reset voltage when new monitoring starts
                     self.current_drift = dict()  # reset current drift when new monitoring starts
                     self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
+                    try:
+                        self.device_id_cache = [get_device_id_from_cache(postgresql_connection_pool.getconn(), serial_number, part_number, can_msg_id) for serial_number, part_number, can_msg_id in zip(mapping_dict['serial_numbers'], mapping_dict['part_numbers'], mapping_dict['can_msg_addresses'])]
+                    except Exception as e:
+                        print(f"Failed to get device IDs from cache: {e}")
+                        self.device_id_cache = None
                     print(f"Parsed mapping dictionary: {mapping_dict}")
-                
+                    
+                    
                 monitoring = True
                 address = hex(msg.data[0])
                 if msg.arbitration_id not in range(256, 512) or address not in feedback_list:
                     continue
                 can_bus_id = msg.arbitration_id-256
                 part_number, serial_number = get_sn_pn_by_id(mapping_dict, can_bus_id)
+                
                 match address:
                     case '0x57':
                         self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "POSITION_MOTOR_Rad", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad", 
@@ -198,7 +209,9 @@ class TimeScaleDBHandler_can1:
                     ###clear the buffer
                     #print(f"{datetime.now().isoformat()} :Flushing CAN bus 1 feedback buffer with {len(self.bus1_buffer )} entries.")
                     #replace a print task with real postgresql insertion task:
-                    #upload_test_record(self.bus1_buffer)
+                    if self.device_id_cache:
+                        telemetry_data = pivot_to_jsonb(self.bus1_buffer)
+                        insert_pivoted_data_to_db(postgresql_connection_pool.getconn(), telemetry_data)
                     self.bus1_buffer.clear()
         
                 

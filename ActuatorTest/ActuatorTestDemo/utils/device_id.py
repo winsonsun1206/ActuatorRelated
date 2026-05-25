@@ -22,7 +22,7 @@ def get_device_id_from_cache(pgs_conn, serial_number, partnumber, can_msg_id):
         return int(device_id)
     else:
         query = f"""
-        INSERT INTO {os.getenv("POSTGRESQL_DB")} (serial_number, part_number, can_msg_id)
+        INSERT INTO devices (serial_number, part_number, can_msg_id)
         VALUES (%s, %s, %s)
         ON CONFLICT (serial_number) DO UPDATE SET part_number = EXCLUDED.part_number
         RETURNING device_id;
