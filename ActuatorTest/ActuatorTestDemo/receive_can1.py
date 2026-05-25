@@ -91,8 +91,10 @@ class TimeScaleDBHandler_can1:
                     self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
                     self.can_bus_id_task = mapping_dict["can_msg_addresses"]
                     for id in self.can_bus_id_task:
+                        conn = postgresql_connection_pool.getconn()
                         part_number, serial_number = get_sn_pn_by_id(mapping_dict, id)
-                        self.device_id_cache[id] = get_device_id_from_cache(postgresql_connection_pool.getconn(), serial_number, part_number, id)
+                        self.device_id_cache[id] = get_device_id_from_cache(conn, serial_number, part_number, id)
+                        postgresql_connection_pool.putconn(conn)
                     
                 monitoring = True
                 address = hex(msg.data[0])
@@ -209,7 +211,9 @@ class TimeScaleDBHandler_can1:
                     #replace a print task with real postgresql insertion task:
                     if self.device_id_cache:
                         telemetry_data = pivot_to_jsonb(self.bus1_buffer)
-                        insert_pivoted_data_to_db(postgresql_connection_pool.getconn(), telemetry_data)
+                        conn = postgresql_connection_pool.getconn()
+                        insert_pivoted_data_to_db(conn, telemetry_data)
+                        postgresql_connection_pool.putconn(conn)
                     self.bus1_buffer.clear()
         
                 
