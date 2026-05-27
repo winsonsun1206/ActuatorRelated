@@ -114,10 +114,13 @@ class TimeScaleDBHandler_can1:
                                         "timestamp": datetime.now().isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)} 
                         #print(f"MCL_POSITION_OUTPUT_Rad_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x59':
-                        self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "Velocity", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad", 
+                        self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "VELOCITY_Radps", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad", 
                                         "timestamp": datetime.now().isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         #print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
+                        ### wired, I can not see the velocity data in the database, even though I can see the print statement with velocity value, and the velocity value is correct. I will check the database insertion part later, but for now, I will just print the velocity value when it is received to make sure we are getting the velocity data correctly.
+                        
                         velocity = struct.unpack('<f', msg.data[1:5])[0]
+                        self.bus1_buffer.append(self.bus1_feedback)
                         if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is None:  # assuming 152 rad/s as the threshold for high speed, this value can be adjusted based on actual requirement
                             self.high_speed_start_time[can_bus_id] = datetime.now()
                         if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and self.start_current.get(can_bus_id) is None:
@@ -212,9 +215,7 @@ class TimeScaleDBHandler_can1:
                     if self.device_id_cache:
                         telemetry_data = pivot_to_jsonb(self.bus1_buffer)
                         conn = postgresql_connection_pool.getconn()
-                        #check if the VELOCITY_Radps variable exists in the telemetry data, if exists, print velocity inserted.
-                        if any(entry['variable_name'] == "Velocity" for entry in self.bus1_buffer):
-                            print(f"{datetime.now().isoformat()} :Inserting velocity data into database for device id {self.device_id_cache.get(can_bus_id,None)} with velocity value {self.current.get(can_bus_id, 0.0)}.")
+                        insert_pivoted_data_to_db(conn, telemetry_data)
                         postgresql_connection_pool.putconn(conn)
                     self.bus1_buffer.clear()
         
