@@ -93,7 +93,7 @@ def runinTest_monitor(canbus:str):
         server_socket.bind((HOST, UDP_PORT))
         print(f"UDP server listening on {HOST}:{UDP_PORT}")
         server_socket.settimeout(timeout)  # 设置接收消息的超时时间
-        # start_time = datetime.now()
+        # start_time = datetime.now(timezone.utc)
         while True:
             try:        
                 data, udp_ip = server_socket.recvfrom(BUFFER_SIZE)

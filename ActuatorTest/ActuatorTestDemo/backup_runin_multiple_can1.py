@@ -181,11 +181,11 @@ class RabbitmqCusumer:
             
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
                 client_socket.settimeout(1.0)
-                start_time = datetime.now()
+                start_time = datetime.now(timezone.utc)
                 calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses)
                 time.sleep(1)
                 client_socket.sendto(json.dumps({"message":"motor parameter calibration"}).encode('utf-8'), (HOST, UDP_PORT))
-                while calibration_active and datetime.now()- start_time < 600.0:
+                while calibration_active and datetime.now(timezone.utc)- start_time < 600.0:
                     try:
                         data, udp_ip = client_socket.recvfrom(BUFFER_SIZE)
                         message = json.loads(data.decode('utf-8'))
@@ -202,7 +202,7 @@ class RabbitmqCusumer:
                 calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)
                 time.sleep(1)
                 client_socket.sendto(json.dumps({"message":"encoder parameter calibration"}).encode('utf-8'), (HOST, UDP_PORT))
-                while calibration_active and datetime.now()- start_time < 600.0:
+                while calibration_active and datetime.now(timezone.utc)- start_time < 600.0:
                     try:
                         data, udp_ip = client_socket.recvfrom(BUFFER_SIZE)
                         message = json.loads(data.decode('utf-8'))
@@ -220,7 +220,7 @@ class RabbitmqCusumer:
                 calibrate_electrical_parameter(part_numbers, serial_numbers, can_msg_addresses)
                 time.sleep(1)
                 client_socket.sendto(json.dumps({"message":"electrical parameter calibration"}).encode('utf-8'), (HOST, UDP_PORT))
-                while calibration_active and datetime.now()- start_time < 600.0:
+                while calibration_active and datetime.now(timezone.utc)- start_time < 600.0:
                     try:
                         data, udp_ip = client_socket.recvfrom(BUFFER_SIZE)
                         message = json.loads(data.decode('utf-8'))

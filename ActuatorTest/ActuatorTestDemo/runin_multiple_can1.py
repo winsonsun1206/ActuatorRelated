@@ -203,7 +203,7 @@ class RabbitmqCusumer:
                     continue
                 elif task.get('operation') == 'runin_test':
                     test_slots = task.get('parameters', {})
-                    task_id = task.get('task_id', f'can1_unknown_runin_task_id_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}').strip()
+                    task_id = task.get('task_id', f'can1_unknown_runin_task_id_{datetime.datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}').strip()
                     if not test_slots or len(test_slots) == 0:
                         print("No test slots provided in the task parameters.")
                         continue
@@ -215,9 +215,9 @@ class RabbitmqCusumer:
                     is_debug = False
 
                 if task.get('operation') == 'runin_test':
-                    start_time = datetime.datetime.now()
+                    start_time = datetime.datetime.now(timezone.utc)
                     test_slots = task.get('parameters', {})
-                    task_id = task.get('task_id', f'can1_runin_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}').strip()
+                    task_id = task.get('task_id', f'can1_runin_{datetime.datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}').strip()
                     
                     self.redis_handler.set_value(task_id, 0.0) # 任务开始
 
@@ -268,7 +268,7 @@ class RabbitmqCusumer:
                                         sw_version='1.55.0',
                                         operator_id= task.get('operator_id', 'unknown_operator_id').strip(),
                                         operator_name=task.get('operator_name', 'unknown_operator_name').strip(),
-                                        test_duration_sec=(datetime.datetime.now() - start_time).total_seconds(),
+                                        test_duration_sec=(datetime.datetime.now(timezone.utc) - start_time).total_seconds(),
                                         calibration_result = result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
                                         final_status='PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), 999) == 0 else 'FAIL',
                                         start_current_a=result_data.get("start_current", {}).get(str(slot['can_msg_id']), 0.0),
@@ -277,7 +277,7 @@ class RabbitmqCusumer:
                                         current_shift=result_data.get("current_drift", {}).get(str(slot['can_msg_id']), 0.0),
                                         forward_viscosity=0.0,
                                         reverse_viscosity=0.0,
-                                        test_time= datetime.datetime.now(),
+                                        test_time= datetime.datetime.now(timezone.utc),
                                         error_code=result_data.get("error_code", {}).get(str(slot['can_msg_id']), '0x00'),
                                         performance_details={"empty": True}
                                     )
@@ -292,7 +292,7 @@ class RabbitmqCusumer:
                                 self.redis_handler.set_value(task_id, 1.0) # 设置一个redis键值对来标识通信超时
                 elif task.get('operation') == 'calibration':
                     test_slots = task.get('parameters', {})
-                    task_id = task.get('task_id', f'can1_unknown_calibration_task_id_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}')
+                    task_id = task.get('task_id', f'can1_unknown_calibration_task_id_{datetime.datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}')
                     if not test_slots or len(test_slots) == 0:
                         print("No test slots provided in the task parameters.")
                         continue
@@ -307,7 +307,7 @@ class RabbitmqCusumer:
                         client_socket.sendto(json.dumps({
                                 "message": f"calibration for Part Numbers: {','.join(part_numbers)}, Serial Numbers: {','.join(serial_numbers)}, CAN Addresses: {','.join(hex(addr) for addr in can_msg_addresses)}"
                             }).encode('utf-8'), (HOST, UDP_PORT))
-                        start_time = datetime.datetime.now()
+                        start_time = datetime.datetime.now(timezone.utc)
                         #reset parameters:
                         # calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         # heartbeat_calibration(can_msg_addresses, timeout=300)
@@ -334,7 +334,7 @@ class RabbitmqCusumer:
                         print("Calibration process completed.")
                         self.redis_handler.set_value(task_id, 1.0)
                         #client_socket.sendto(json.dumps({"message":"motor parameter calibration"}).encode('utf-8'), (HOST, UDP_PORT))
-                        # while calibration_active and datetime.datetime.now()- start_time < 600.0:
+                        # while calibration_active and datetime.datetime.now(timezone.utc)- start_time < 600.0:
                         #     try:
                         #         data, udp_ip = client_socket.recvfrom(BUFFER_SIZE)
                         #         message = json.loads(data.decode('utf-8'))
@@ -351,7 +351,7 @@ class RabbitmqCusumer:
                         # calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         # time.sleep(1)
                         # client_socket.sendto(json.dumps({"message":"encoder parameter calibration"}).encode('utf-8'), (HOST, UDP_PORT))
-                        # while calibration_active and datetime.now()- start_time < 600.0:
+                        # while calibration_active and datetime.now(timezone.utc)- start_time < 600.0:
                         #     try:
                         #         data, udp_ip = client_socket.recvfrom(BUFFER_SIZE)
                         #         message = json.loads(data.decode('utf-8'))
