@@ -93,7 +93,7 @@ class TimeScaleDBHandler_can1:
                     for id in self.can_bus_id_task:
                         conn = postgresql_connection_pool.getconn()
                         part_number, serial_number = get_sn_pn_by_id(mapping_dict, id)
-                        self.device_id_cache[id] = get_device_id_from_cache(conn, serial_number, part_number,self.station_name,1, id)
+                        self.device_id_cache[id] = get_device_id_from_cache(conn, serial_number, part_number,id, self.station_name,1)
                         postgresql_connection_pool.putconn(conn)
                     
                 monitoring = True
