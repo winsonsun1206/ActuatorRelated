@@ -93,7 +93,7 @@ class TimeScaleDBHandler_can1:
                     for id in self.can_bus_id_task:
                         conn = postgresql_connection_pool.getconn()
                         part_number, serial_number = get_sn_pn_by_id(mapping_dict, id)
-                        self.device_id_cache[id] = get_device_id_from_cache(conn, serial_number, part_number, id)
+                        self.device_id_cache[id] = get_device_id_from_cache(conn, serial_number, part_number,self.station_name,1, id)
                         postgresql_connection_pool.putconn(conn)
                     
                 monitoring = True
@@ -212,15 +212,11 @@ class TimeScaleDBHandler_can1:
                     if self.device_id_cache:
                         telemetry_data = pivot_to_jsonb(self.bus1_buffer)
                         conn = postgresql_connection_pool.getconn()
-                        insert_pivoted_data_to_db(conn, telemetry_data)
+                        insert_pivoted_data_to_db(conn, telemetry_data)  #pivot_and_insert_telemetry
                         postgresql_connection_pool.putconn(conn)
                     self.bus1_buffer.clear()
         
                 
-
-
-
-
 def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can1):
     can_bus = can.interface.Bus(channel= canbus, interface='socketcan')
     #feedback_list = [hex(x) for x in range(0x41, 0x4d+1)]
