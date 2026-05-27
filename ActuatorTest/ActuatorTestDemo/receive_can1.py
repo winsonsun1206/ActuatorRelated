@@ -114,7 +114,7 @@ class TimeScaleDBHandler_can1:
                                         "timestamp": datetime.now().isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)} 
                         #print(f"MCL_POSITION_OUTPUT_Rad_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x59':
-                        self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "VELOCITY_Radps", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad/s", 
+                        self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "VELOCITY_Radps", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"radps", 
                                         "timestamp": datetime.now().isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         #print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                         velocity = struct.unpack('<f', msg.data[1:5])[0]
@@ -212,7 +212,9 @@ class TimeScaleDBHandler_can1:
                     if self.device_id_cache:
                         telemetry_data = pivot_to_jsonb(self.bus1_buffer)
                         conn = postgresql_connection_pool.getconn()
-                        insert_pivoted_data_to_db(conn, telemetry_data)  #pivot_and_insert_telemetry
+                        #check if the VELOCITY_Radps variable exists in the telemetry data, if exists, print velocity inserted.
+                        if any(entry['variable_name'] == "VELOCITY_Radps" for entry in self.bus1_buffer):
+                            print(f"{datetime.now().isoformat()} :Inserting velocity data into database for device id {self.device_id_cache.get(can_bus_id,None)} with velocity value {self.current.get(can_bus_id, 0.0)}.")
                         postgresql_connection_pool.putconn(conn)
                     self.bus1_buffer.clear()
         
