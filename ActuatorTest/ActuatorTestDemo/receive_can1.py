@@ -120,8 +120,7 @@ class TimeScaleDBHandler_can1:
                         ### wired, I can not see the velocity data in the database, even though I can see the print statement with velocity value, and the velocity value is correct. I will check the database insertion part later, but for now, I will just print the velocity value when it is received to make sure we are getting the velocity data correctly.
                         
                         velocity = struct.unpack('<f', msg.data[1:5])[0]
-                        self.bus1_buffer.append({"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "VELOCITY_Radps", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad", 
-                                        "timestamp": datetime.now().isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)})
+            
                         if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is None:  # assuming 152 rad/s as the threshold for high speed, this value can be adjusted based on actual requirement
                             self.high_speed_start_time[can_bus_id] = datetime.now()
                         if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is not None and self.start_current.get(can_bus_id) is None:
@@ -215,10 +214,6 @@ class TimeScaleDBHandler_can1:
                     #replace a print task with real postgresql insertion task:
                     if self.device_id_cache:
                         telemetry_data = pivot_to_jsonb(self.bus1_buffer)
-                        #check if the Velocity_Radps data is in the telemetry data, if it is, print the velocity value to make sure we are getting the velocity data correctly, because I found the velocity data is missing in the database even though I can see the print statement with velocity value when it is received.
-                        if any(entry["variable_name"] == "VELOCITY_Radps" for entry in self.bus1_buffer):
-                            velocity_value = next(entry["data"] for entry in self.bus1_buffer if entry["variable_name"] == "VELOCITY_Radps")
-                            print(f"Flushing data with VELOCITY_Radps value: {velocity_value}")
                         conn = postgresql_connection_pool.getconn()
                         insert_pivoted_data_to_db(conn, telemetry_data)
                         postgresql_connection_pool.putconn(conn)
