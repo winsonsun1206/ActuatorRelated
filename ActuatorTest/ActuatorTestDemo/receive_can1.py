@@ -116,7 +116,7 @@ class TimeScaleDBHandler_can1:
                     case '0x59':
                         self.bus1_feedback = {"can_bus":1, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "VELOCITY_Radps", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"radps", 
                                         "timestamp": datetime.now().isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
-                        #print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
+                        print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                         velocity = struct.unpack('<f', msg.data[1:5])[0]
                         if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is None:  # assuming 152 rad/s as the threshold for high speed, this value can be adjusted based on actual requirement
                             self.high_speed_start_time[can_bus_id] = datetime.now()
