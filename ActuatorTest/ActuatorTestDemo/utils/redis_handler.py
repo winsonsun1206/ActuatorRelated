@@ -8,6 +8,10 @@ class RedisHandler:
     def set_value(self, key, value):
         # set retention time to 24 hours (86400 seconds)
         self.redis_client.setex(key, 86400, json.dumps(value))
+        
+    def set_value_with_expiry(self, key, value, expiry_seconds):
+        """Set a value in Redis with a custom expiration time."""
+        self.redis_client.setex(key, expiry_seconds, json.dumps(value))
     
     def get_value(self, key):
         value = self.redis_client.get(key)

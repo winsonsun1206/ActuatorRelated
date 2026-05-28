@@ -249,7 +249,8 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can1):
                          #sendback the test result through udp, starting from max temperature
                          test_result= {"max_temperature": db_handler.max_temp, "calibration": db_handler.calibration, "error_code": db_handler.error_code,
                                        "start_current": db_handler.start_current, "current_drift": db_handler.current_drift, "r_voltage": db_handler.voltage}
-                         server_socket.sendto(json.dumps({"message": "test result", "data": test_result}).encode('utf-8'), (udp_ip[0], udp_ip[1]))
+                         db_handler.redis_handler.set_value_with_expiry(f"{db_handler.station_name}_can1_test_result".strip(), test_result, 10)
+                         #server_socket.sendto(json.dumps({"message": "test result", "data": test_result}).encode('utf-8'), (udp_ip[0], udp_ip[1]))
                          continue
                     else:
                         print("starting monitoring thread")
