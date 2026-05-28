@@ -16,6 +16,7 @@ from utils.parsing_mapping_id_sn import parse_mapping_id_sn, get_sn_pn_by_id
 from utils.pqs_handler import postgresql_connection_pool
 from utils.pqs_handler import upload_test_record
 from utils.can_data_parsing import pivot_to_jsonb, insert_pivoted_data_to_db
+from utils.device_id import get_device_id_from_cache
 current_sampling_interval = 3080
 
 #can0 = can.interface.Bus(channel='can1', bustype='socketcan')  # socketcan_native
@@ -79,6 +80,7 @@ class TimeScaleDBHandler_can0:
                     ### in this condition, it means the monitoring just starts, we need to parse the mapping info sent from the UDP server, and then start monitoring the CAN bus
                     mapping_dict = parse_mapping_id_sn(monitor_task)
                     self.max_temp = dict()  # reset max temp when new monitoring starts 
+                    self.device_id_cache = dict() # reset device id cache when new monitoring starts
                     self.calibration = dict()  # reset calibration status when new monitoring starts
                     self.error_code = dict()  # reset error code when new monitoring starts 
                     self.start_current = dict()  # reset start current when new monitoring starts
@@ -89,6 +91,13 @@ class TimeScaleDBHandler_can0:
                     self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
                     print(f"Parsed mapping dictionary: {mapping_dict}")
                     self.heartbeat_starttime = datetime.now(timezone.utc)
+                    self.can_bus_id_task = mapping_dict["can_msg_addresses"]
+                    for id in self.can_bus_id_task:
+                        conn = postgresql_connection_pool.getconn()
+                        part_number, serial_number = get_sn_pn_by_id(mapping_dict, id)
+                        self.device_id_cache[id] = get_device_id_from_cache(conn, serial_number, part_number,id, self.station_name,0)
+                        postgresql_connection_pool.putconn(conn)
+                    
                 #can_list = [int(can_addres) for can_addres in mapping_dict.get("can_msg_addresses", []) if can_addres is not None]
                 # if datetime.now(timezone.utc) - self.heartbeat_starttime > timedelta(seconds=1):
                 #     send_heartbeat("can0", mapping_dict.get("can_msg_addresses", []))
