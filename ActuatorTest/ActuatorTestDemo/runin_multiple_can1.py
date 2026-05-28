@@ -261,33 +261,34 @@ class RabbitmqCusumer:
                                 result_raw = self.redis_handler.get_value(f"{self.station_name}_can1_test_result".strip())
                              
                                 #db_handler.redis_handler.set_value(f"{db_handler.station_name}_can1_test_result_{datetime.now(timezone.utc).isoformat()}".strip(), test_result)
-                                result_data = json.loads(result_raw).get("data", {})
+                                result_data = result_raw.get("data", {})
                         
                                 print(f"data received from UDP server: {result_data}")
-                                for slot in test_slots:
-                                        result_obj= RuninTestRecord(
-                                        serial_number=slot['serial_number'],
-                                        joint_name='joint' if slot['can_msg_id'] in range(1,4) else 'wheel',  # 示例：根据CAN消息ID的奇偶性来区分joint和wheel_
-                                        part_number=slot['part_number'],
-                                        can_id=slot['can_msg_id'],
-                                        hw_version='1.19.0',
-                                        sw_version='1.55.0',
-                                        operator_id= task.get('operator_id', 'unknown_operator_id').strip(),
-                                        operator_name=task.get('operator_name', 'unknown_operator_name').strip(),
-                                        test_duration_sec=(datetime.datetime.now(timezone.utc) - start_time).total_seconds(),
-                                        calibration_result = result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
-                                        final_status='PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), 999) == 0 else 'FAIL',
-                                        start_current_a=result_data.get("start_current", {}).get(str(slot['can_msg_id']), 0.0),
-                                        voltage_v=result_data.get("r_voltage", {}).get(str(slot['can_msg_id']), 0.0),
-                                        max_temp_c=result_data.get("max_temperature", {}).get(str(slot['can_msg_id']), -273.0),
-                                        current_shift=result_data.get("current_drift", {}).get(str(slot['can_msg_id']), 0.0),
-                                        forward_viscosity=0.0,
-                                        reverse_viscosity=0.0,
-                                        test_time= datetime.datetime.now(timezone.utc),
-                                        error_code=result_data.get("error_code", {}).get(str(slot['can_msg_id']), '0x00'),
-                                        performance_details={"empty": True}
-                                    )
-                                        insert_test_record(result_obj)
+                                if result_data != {}:
+                                    for slot in test_slots:
+                                            result_obj= RuninTestRecord(
+                                            serial_number=slot['serial_number'],
+                                            joint_name='joint' if slot['can_msg_id'] in range(1,4) else 'wheel',  # 示例：根据CAN消息ID的奇偶性来区分joint和wheel_
+                                            part_number=slot['part_number'],
+                                            can_id=slot['can_msg_id'],
+                                            hw_version='1.19.0',
+                                            sw_version='1.55.0',
+                                            operator_id= task.get('operator_id', 'unknown_operator_id').strip(),
+                                            operator_name=task.get('operator_name', 'unknown_operator_name').strip(),
+                                            test_duration_sec=(datetime.datetime.now(timezone.utc) - start_time).total_seconds(),
+                                            calibration_result = result_data.get("calibration", {}).get(str(slot['can_msg_id']), 'unknown_calibration_result'),
+                                            final_status='PASS' if result_data.get("error_code", {}).get(str(slot['can_msg_id']), 999) == 0 else 'FAIL',
+                                            start_current_a=result_data.get("start_current", {}).get(str(slot['can_msg_id']), 0.0),
+                                            voltage_v=result_data.get("r_voltage", {}).get(str(slot['can_msg_id']), 0.0),
+                                            max_temp_c=result_data.get("max_temperature", {}).get(str(slot['can_msg_id']), -273.0),
+                                            current_shift=result_data.get("current_drift", {}).get(str(slot['can_msg_id']), 0.0),
+                                            forward_viscosity=0.0,
+                                            reverse_viscosity=0.0,
+                                            test_time= datetime.datetime.now(timezone.utc),
+                                            error_code=result_data.get("error_code", {}).get(str(slot['can_msg_id']), '0x00'),
+                                            performance_details={"empty": True}
+                                        )
+                                            insert_test_record(result_obj)
                         
                                     
                                 
