@@ -184,6 +184,7 @@ class RabbitmqCusumer:
         self.test_consumer_thread.daemon = True   # 设置为守护线程，这样在主线程退出时它会自动结束
         self.test_consumer_thread.start()
         self.redis_handler = RedisHandler(host=server_ip, port=6379, db=redis_db)
+        self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
 
     def callback(self, ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -258,10 +259,12 @@ class RabbitmqCusumer:
                                 runin_test(part_numbers, serial_numbers, can_msg_addresses, seq_file_70)
                                 client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                                 #get the max temperature from udp comm
-                                result_raw, _udp =client_socket.recvfrom(BUFFER_SIZE)
-                                result_data = json.loads(result_raw.decode('utf-8')).get("data", {})
-                                print(f"error_code: {result_data.get("error_code", {}).get('3')}")
-                                print(f"data received from UDP server: {result_data}")
+                                # result_raw, _udp =client_socket.recvfrom(BUFFER_SIZE)
+                                # result_data = json.loads(result_raw.decode('utf-8')).get("data", {})
+                                # print(f"error_code: {result_data.get("error_code", {}).get('3')}")
+                                # print(f"data received from UDP server: {result_data}")
+                                time.sleep(2)  # 等待UDP服务器处理并发送结果
+                                result_data = self.redis_handler.get_value(f"{self.station_name}_can0_test_result".strip())
                                 for slot in test_slots:
                                         result_obj= RuninTestRecord(
                                         serial_number=slot['serial_number'],

@@ -2,7 +2,7 @@ import os
 import can
 import time
 import signal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import struct
 from utils.convertion import hex_to_float
 import threading
@@ -13,7 +13,9 @@ from utils.send_data import send_can_data, send_heartbeat
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 from utils.parsing_mapping_id_sn import parse_mapping_id_sn, get_sn_pn_by_id
+from utils.pqs_handler import postgresql_connection_pool
 from utils.pqs_handler import upload_test_record
+from utils.can_data_parsing import pivot_to_jsonb, insert_pivoted_data_to_db
 current_sampling_interval = 3080
 
 #can0 = can.interface.Bus(channel='can1', bustype='socketcan')  # socketcan_native
@@ -123,8 +125,8 @@ class TimeScaleDBHandler_can0:
                                 self.end_current[can_bus_id] = self.current.get(can_bus_id, 0.0)
                                 self.current_drift[can_bus_id] = (self.end_current[can_bus_id] - self.start_current[can_bus_id])/ self.start_current[can_bus_id]
                                 # if high speed lasts for more than 3 seconds, we consider it as a valid high speed state, this duration can also be adjusted
-                        self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "high_speed_current", "data": self.current.get(can_bus_id, 0.0), "unit":"A", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                        # self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "high_speed_current", "data": self.current.get(can_bus_id, 0.0), "unit":"A", 
+                        #                 "timestamp": datetime.now(timezone.utc).isoformat()}
                             
                     case '0x5a':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_IQ_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
@@ -204,6 +206,12 @@ class TimeScaleDBHandler_can0:
                     #print(f"{datetime.now(timezone.utc).isoformat()} :Flushing CAN bus 0 feedback buffer with {len(self.bus0_buffer )} entries.")
                     #replace a print task with real postgresql insertion task:
                     #upload_test_record(self.bus0_buffer)
+                    if self.device_id_cache:
+                        telemetry_data = pivot_to_jsonb(self.bus0_buffer)
+                        conn = postgresql_connection_pool.getconn()
+                        insert_pivoted_data_to_db(conn, telemetry_data)
+                        postgresql_connection_pool.putconn(conn)
+                    
                     self.bus0_buffer.clear()
         
                 
@@ -240,8 +248,9 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can0):
                          #sendback the test result through udp, starting from max temperature
                          test_result= {"max_temperature": db_handler.max_temp, "calibration": db_handler.calibration, "error_code": db_handler.error_code,
                                        "start_current": db_handler.start_current, "current_drift": db_handler.current_drift, "r_voltage": db_handler.voltage}
-                         print(f"Test result: {test_result}")
-                         server_socket.sendto(json.dumps({"message": "test result", "data": test_result}).encode('utf-8'), (udp_ip[0], udp_ip[1]))
+                         #print(f"Test result: {test_result}")
+                         db_handler.redis_handler.set_value_with_expiry(f"{db_handler.station_name}_can0_test_result".strip(), test_result, 10)
+                         #server_socket.sendto(json.dumps({"message": "test result", "data": test_result}).encode('utf-8'), (udp_ip[0], udp_ip[1]))
                          continue
                     else:
                         print("starting monitoring thread")
@@ -249,7 +258,7 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can0):
                         # thread = threading.Thread(target =read_canbus, args=(can_bus, stop_signal,) )
                         # thread.start()
                         monitor= True
-                        if "calibration" is message_content:
+                        if "calibration" in message_content:
                             current_task = "calibration"
                         else:
                             current_task = "runin_test"
