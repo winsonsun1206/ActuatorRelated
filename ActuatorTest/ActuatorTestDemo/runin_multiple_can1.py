@@ -261,11 +261,11 @@ class RabbitmqCusumer:
                                 result_raw = self.redis_handler.get_value(f"{self.station_name}_can1_test_result".strip())
                              
                                 #db_handler.redis_handler.set_value(f"{db_handler.station_name}_can1_test_result_{datetime.now(timezone.utc).isoformat()}".strip(), test_result)
-                                print(f"Raw result received from UDP server: {result_raw}")
-                                result_data = result_raw.get("data", {})
+                                # print(f"Raw result received from UDP server: {result_raw}")
+                                # result_data = result_raw.get("data", {})
                         
-                                print(f"data received from UDP server: {result_data}")
-                                if result_data != {}:
+                                # print(f"data received from UDP server: {result_data}")
+                                if result_raw != {}:
                                     for slot in test_slots:
                                             result_obj= RuninTestRecord(
                                             serial_number=slot['serial_number'],
