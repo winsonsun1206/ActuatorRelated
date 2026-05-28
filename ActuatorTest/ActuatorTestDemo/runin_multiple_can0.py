@@ -6,6 +6,7 @@ from utils.sequence_parse import parse_test_cases
 from utils.send_data import send_can_data, send_heartbeat
 import can
 import time, datetime
+from datetime import timezone
 import struct
 from utils.generate_tmp import write_tmp_file
 import pika
