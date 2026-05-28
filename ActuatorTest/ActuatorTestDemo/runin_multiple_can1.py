@@ -258,14 +258,14 @@ class RabbitmqCusumer:
                                 #get the max temperature from udp comm
                                 #result_raw, _udp =client_socket.recvfrom(BUFFER_SIZE)
                                 time.sleep(2)  # 等待UDP服务器处理并发送结果
-                                result_raw = self.redis_handler.get_value(f"{self.station_name}_can1_test_result".strip())
+                                result_data = self.redis_handler.get_value(f"{self.station_name}_can1_test_result".strip())
                              
                                 #db_handler.redis_handler.set_value(f"{db_handler.station_name}_can1_test_result_{datetime.now(timezone.utc).isoformat()}".strip(), test_result)
                                 # print(f"Raw result received from UDP server: {result_raw}")
                                 # result_data = result_raw.get("data", {})
                         
                                 # print(f"data received from UDP server: {result_data}")
-                                if result_raw != {}:
+                                if result_data != {}:
                                     for slot in test_slots:
                                             result_obj= RuninTestRecord(
                                             serial_number=slot['serial_number'],
