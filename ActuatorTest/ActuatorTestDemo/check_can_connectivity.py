@@ -1,6 +1,6 @@
 import can
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from utils.send_data import send_can_data, send_heartbeat
 BUFFER_SIZE = 2048 
 
