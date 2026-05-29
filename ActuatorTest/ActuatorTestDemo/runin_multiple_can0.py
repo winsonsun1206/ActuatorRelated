@@ -178,7 +178,7 @@ class RabbitmqCusumer:
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout= 7201))
         self.channel = self.connection.channel()
-        self.channel.queue_declare(queue=queue_name)
+        self.channel.queue_declare(queue=queue_name, durable=True)
         self.test_queue = queue.Queue()
         self.test_consumer_thread = threading.Thread(target=self.process_tasks)
         self.test_consumer_thread.daemon = True   # 设置为守护线程，这样在主线程退出时它会自动结束
