@@ -112,15 +112,15 @@ class TimeScaleDBHandler_can0:
                 match address:
                     case '0x57':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "POSITION_MOTOR_Rad", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()} 
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),"device_id": self.device_id_cache.get(can_bus_id,None)} 
                         #print(f"MCL_POSITION_MOTOR_Rad_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x58':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "POSITION_OUTPUT_Rad", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()} 
+                                        "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)} 
                         #print(f"MCL_POSITION_OUTPUT_Rad_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x59':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "VELOCITY_Radps", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"rad/s", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                                        "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         #print(f"MCL_VELOCITY_Radps_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                         velocity = struct.unpack('<f', msg.data[1:5])[0]
                         if abs(velocity) > 152 and self.high_speed_start_time.get(can_bus_id) is None:  # assuming 152 rad/s as the threshold for high speed, this value can be adjusted based on actual requirement
@@ -139,39 +139,39 @@ class TimeScaleDBHandler_can0:
                             
                     case '0x5a':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_IQ_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),"device_id": self.device_id_cache.get(can_bus_id,None)}
                         self.current[can_bus_id] = struct.unpack('<f', msg.data[1:5])[0]
                         #print(f"MCL_CURRENT_IQ_A_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x5b':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CURRENT_ID_A", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"A", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                                        "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         
                         #print(f"MCL_CURRENT_ID_A_FB:{struct.unpack('<f', msg.data[1:5])[0]}.")
                     case '0x5c':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "IC_Voltage", "data": struct.unpack('<f', msg.data[1:5])[0], "unit":"V", 
-                                            "timestamp": datetime.now(timezone.utc).isoformat()}
+                                            "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         self.voltage[can_bus_id] = struct.unpack('<f', msg.data[1:5])[0]
                         
                         
                     case '0x5d':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "BOARD_TEMP__degC", "data": struct.unpack('<i', msg.data[1:5])[0]/10, "unit":"°C", 
-                                            "timestamp": datetime.now(timezone.utc).isoformat()}
+                                            "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         #print(f"MCL_TEMP_BOARD_ddegC_FB:{struct.unpack('<i', msg.data[1:5])[0]/10}" + u"\u2103"+".")
                     case '0x5e':
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "MOTOR_TEMP_degC", "data": struct.unpack('<i', msg.data[1:5])[0]/10, "unit":"°C", 
-                                            "timestamp": datetime.now(timezone.utc).isoformat()}
+                                            "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         temperature = struct.unpack('<i', msg.data[1:5])[0]/10
                         self.max_temp[can_bus_id] = temperature if temperature > self.max_temp.get(can_bus_id, float('-inf')) else self.max_temp.get(can_bus_id, float('-inf'))
                         #print(f"MCL_TEMP_MOTOR_ddegC_FB:{struct.unpack('<i', msg.data[1:5])[0]/10}"+u"\u2103"+".")
                     case '0x52':  #status
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "STATUS", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),"device_id": self.device_id_cache.get(can_bus_id,None)}
                         status = struct.unpack('<i', msg.data[1:5])[0]
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_status".strip(), status)  
                         #print(f"receive running status: {status}")
                     case '0x53':  #Calibration
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "CALIBRATION", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),"device_id": self.device_id_cache.get(can_bus_id,None)}
                         self.calibration[can_bus_id] = struct.unpack('<i', msg.data[1:5])[0]
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_calibration".strip(), struct.unpack('<i', msg.data[1:5])[0])    
                         #print(f"redis::{station_name}_can0_bus_{can_bus_id}_{serial_number}_calibration", struct.unpack('<i', msg.data[1:5])[0])
@@ -179,7 +179,7 @@ class TimeScaleDBHandler_can0:
                         #print(f"receive calibration status: {calibrated_fb}")
                     case '0x54':  #error??
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number, "variable_name": "ERROR", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),"device_id": self.device_id_cache.get(can_bus_id,None)}
                         self.error_code[can_bus_id] = struct.unpack('<i', msg.data[1:5])[0] if struct.unpack('<i', msg.data[1:5])[0] !=0 else self.error_code.get(can_bus_id, 0)
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error", struct.unpack('<i', msg.data[1:5])[0])    
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error".strip(), struct.unpack('<i', msg.data[1:5])[0])    
@@ -187,14 +187,14 @@ class TimeScaleDBHandler_can0:
                         # print("receive error status")
                     case '0x55': #warning???
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "WARNING", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                                        "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_warning".strip(), struct.unpack('<i', msg.data[1:5])[0])
                         
                         # warning_fb = struct.unpack('<i', msg.data[1:5])[0]
                         # print("receive warning status")
                     case '0x56': #control mode
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number,  "variable_name": "CONTROL_MODE", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
-                                        "timestamp": datetime.now(timezone.utc).isoformat()}
+                                        "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)}
                         
                     # case '0x5d': # firmware_version
                     #     self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number,  "variable_name": "FIRMWARE_VERSION", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
