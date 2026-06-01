@@ -31,6 +31,7 @@ warning_fb=0
 control_mode =0
 current_task =""
 monitor = False
+sequence_duration = 4791.2
 
 
 class TimeScaleDBHandler_can1:
@@ -55,7 +56,7 @@ class TimeScaleDBHandler_can1:
         self.current = dict()
         self.voltage = dict()
         self.current_drift = dict()
-
+        self.test_start_time = None
 
     def read_canbus(self, task_queue, can_bus, stop_event):
         # can_bus = can.interface.Bus(channel= canbus, interface='socketcan')
@@ -90,6 +91,7 @@ class TimeScaleDBHandler_can1:
                     self.current_drift = dict()  # reset current drift when new monitoring starts
                     self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
                     self.can_bus_id_task = mapping_dict["can_msg_addresses"]
+                    self.test_start_time = datetime.now(timezone.utc)
                     for id in self.can_bus_id_task:
                         conn = postgresql_connection_pool.getconn()
                         part_number, serial_number = get_sn_pn_by_id(mapping_dict, id)
@@ -213,6 +215,11 @@ class TimeScaleDBHandler_can1:
                     #print(f"{datetime.now(timezone.utc).isoformat()} :Flushing CAN bus 1 feedback buffer with {len(self.bus1_buffer )} entries.")
                     #replace a print task with real postgresql insertion task:
                     if self.device_id_cache:
+                        progress = (datetime.now(timezone.utc) - self.test_start_time).total_seconds()/sequence_duration if self.test_start_time else None
+                        ##add all can_id with progress info into the buffer before uploading to database, this is for the convenience of data analysis later, so that we can easily filter the data based on the progress of the test sequence
+                        for can_bus_id in self.can_bus_id_task:
+                            self.bus1_buffer.append({"can_bus":1, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number,  "variable_name": "PROGRESS", "data": progress, "unit":"", 
+                                        "timestamp": datetime.now(timezone.utc).isoformat(), "device_id": self.device_id_cache.get(can_bus_id,None)})
                         telemetry_data = pivot_to_jsonb(self.bus1_buffer)
                         conn = postgresql_connection_pool.getconn()
                         insert_pivoted_data_to_db(conn, telemetry_data)
