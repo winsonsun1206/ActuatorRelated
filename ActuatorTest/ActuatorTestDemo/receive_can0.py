@@ -31,7 +31,7 @@ warning_fb=0
 control_mode =0
 current_task =""
 monitor = False
-sequence_duration = 4791.2
+sequence_duration = 4030
 
 class TimeScaleDBHandler_can0:
     def __init__(self, host, port, database, user, password, table, flush_batch_size=1500, redis_bank=0,station_name="unknown_station"):
