@@ -268,6 +268,7 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can1):
                          continue
                     else:
                         print("starting monitoring thread")
+                        time.sleep(1.5)
                         monitor_task.put_nowait(message_content)
                         # thread = threading.Thread(target =read_canbus, args=(can_bus, stop_signal,) )
                         # thread.start()
