@@ -247,7 +247,7 @@ class RabbitmqCusumer:
                                     "message": f"runin_test for Part Numbers: {','.join(part_numbers)}, Serial Numbers: {','.join(serial_numbers)}, CAN Addresses: {','.join(hex(addr) for addr in can_msg_addresses)}"
                                 }).encode('utf-8'), (HOST, UDP_PORT))
                                 print(f"Sent test start message to UDP server at {HOST}:{UDP_PORT}")
-                                time.sleep(1.5)
+                                #time.sleep(1.5) this will make the power status to 0 when logging the power on status in receive_can0.py, which will cause the test to fail, so remove this sleep and move it after sending the power on command
                                 #0001000000000000
                                 send_can_data(can_bus, can_msg_addresses, b'\x00\x01\x00\x00\x00\x00\x00\x00') 
                                 #0189FD8613000000
