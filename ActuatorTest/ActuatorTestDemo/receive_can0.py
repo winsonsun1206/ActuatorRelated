@@ -56,6 +56,7 @@ class TimeScaleDBHandler_can0:
         self.voltage = dict()
         self.current_drift = dict()
         self.test_start_time = None
+        self.status = dict()
 
 
     def read_canbus(self, task_queue, can_bus, stop_event):
@@ -90,6 +91,7 @@ class TimeScaleDBHandler_can0:
                     self.voltage = dict()  # reset voltage when new monitoring starts
                     self.current_drift = dict()  # reset current drift when new monitoring starts
                     self.high_speed_start_time = dict()  # reset high speed start time when new monitoring starts
+                    self.status = dict()
                     print(f"Parsed mapping dictionary: {mapping_dict}")
                     self.heartbeat_starttime = datetime.now(timezone.utc)
                     self.can_bus_id_task = mapping_dict["can_msg_addresses"]
@@ -169,6 +171,7 @@ class TimeScaleDBHandler_can0:
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id, "serial_number": serial_number, "part_number": part_number, "variable_name": "STATUS", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now(timezone.utc).isoformat(),"device_id": self.device_id_cache.get(can_bus_id,None)}
                         status = struct.unpack('<i', msg.data[1:5])[0]
+                        self.status[can_bus_id] = status
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_status".strip(), status)  
                         #print(f"receive running status: {status}")
                     case '0x53':  #Calibration
@@ -182,7 +185,11 @@ class TimeScaleDBHandler_can0:
                     case '0x54':  #error??
                         self.bus0_feedback = {"can_bus":0, "can_bus_id": can_bus_id,"serial_number": serial_number, "part_number": part_number, "variable_name": "ERROR", "data": struct.unpack('<i', msg.data[1:5])[0], "unit":"", 
                                         "timestamp": datetime.now(timezone.utc).isoformat(),"device_id": self.device_id_cache.get(can_bus_id,None)}
-                        self.error_code[can_bus_id] = struct.unpack('<i', msg.data[1:5])[0] if struct.unpack('<i', msg.data[1:5])[0] !=0 else self.error_code.get(can_bus_id, 0)
+                        error_fb = struct.unpack('<i', msg.data[1:5])[0]
+                        self.error_code[can_bus_id] = error_fb if error_fb !=0 else self.error_code.get(can_bus_id, 0)
+                        #check the bit 0 of status, if it is 0, it means shutdown manually for some error and register error as -1
+                        if self.status.get(can_bus_id, 0) & 0x01 == 0:
+                            self.error_code[can_bus_id] = -1
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error", struct.unpack('<i', msg.data[1:5])[0])    
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_bus_id}_{serial_number}_error".strip(), struct.unpack('<i', msg.data[1:5])[0])    
 

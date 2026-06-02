@@ -286,7 +286,7 @@ class RabbitmqCusumer:
                                         reverse_viscosity=0.0,
                                         test_time= datetime.datetime.now(timezone.utc),
                                         error_code=result_data.get("error_code", {}).get(str(slot['can_msg_id']), '0x00'),
-                                        performance_details={"empty": True}
+                                        performance_details={"encode vendor": "ic_haus", "Gear":"PEEK"}
                                     )
                                         insert_test_record(result_obj)
                         
