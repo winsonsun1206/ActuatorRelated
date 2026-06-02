@@ -4,6 +4,10 @@ cansend can1 003#1200000000020000
 cansend can0 003#0303000000000000
 # clear up error
 cansend can1 003#0001000000000000
+
+# software shutdown
+cansend can1 001#0201000000000000
+
 #power up
 cansend can1 003#0189FD8613000000
 #control the speed to 150rad/s
