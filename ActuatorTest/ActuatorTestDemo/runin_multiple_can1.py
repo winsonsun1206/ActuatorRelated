@@ -26,6 +26,7 @@ from utils.pqs_handler import postgresql_connection_pool
 
 
 
+
 @dataclass
 class TestSlot:
     part_number: str
@@ -333,13 +334,15 @@ class RabbitmqCusumer:
                         # time.sleep(500)
                         self.redis_handler.set_value(task_id, 0.0)
                         calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses)
-                        time.sleep(0.5)
+                        time.sleep(300)
                         self.redis_handler.set_value(task_id, 0.33)
                         calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
+                        time.sleep(300)
                         self.redis_handler.set_value(task_id, 0.67)
                         calibrate_electrical_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
+                        time.sleep(300)
                         save_parameters_to_flash(part_numbers, serial_numbers, can_msg_addresses)
                         client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                         print("Calibration process completed.")
