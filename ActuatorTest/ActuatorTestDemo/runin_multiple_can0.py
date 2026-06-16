@@ -333,7 +333,7 @@ class RabbitmqCusumer:
                         # time.sleep(500)
                         self.redis_handler.set_value(task_id, 0.0)
                         calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses)                      
-                        time.sleep(200)
+                        time.sleep(150)
                         self.redis_handler.set_value(task_id, 0.33)                       
                         calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)                        
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
