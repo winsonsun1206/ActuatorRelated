@@ -51,7 +51,7 @@ def wait_for_termination(redis_handler, task_id, check_interval=0.3, total_timeo
     start_time = time.time()
     while time.time() - start_time < total_timeout:
         status = redis_handler.get_value(task_id)
-        if status == "calibrationtermination":
+        if status == "Terminated":
             return "termination detected"
         time.sleep(check_interval)
     return None
