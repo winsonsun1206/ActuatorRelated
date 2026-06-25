@@ -17,7 +17,7 @@ import pickle
 from dataclasses import dataclass, asdict
 import socket
 from utils.station_conf import read_station_conf
-from utils.redis_handler import RedisHandler
+from utils.redis_handler import RedisHandler, wait_for_termination
 from pathlib import Path
 from utils.mysql_ops import insert_test_record
 import logging
@@ -332,8 +332,11 @@ class RabbitmqCusumer:
                         #self.redis_handler.set_value(f"{station_name}_can0_bus_{can_msg_addresses[0]}_{serial_numbers[0]}_status".strip(), 0)  # 重置状态为0，等待校准完成的反馈
                         # time.sleep(500)
                         self.redis_handler.set_value(task_id, 0.0)
-                        calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses)                      
-                        time.sleep(150)
+                        calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses)  
+                        wait_for_termination(self.redis_handler, task_id)
+                        #instead of waiting here with sleep, I want to use check the "termination" status from redis very 0.3s,                    
+                        #if it equal to "calibrationtermination", it will jump to client_socket.sendto process
+                        
                         self.redis_handler.set_value(task_id, 0.33)                       
                         calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)                        
                         #heartbeat_calibration(can_msg_addresses, timeout=230)

@@ -17,7 +17,7 @@ import pickle
 from dataclasses import dataclass, asdict
 import socket
 from utils.station_conf import read_station_conf
-from utils.redis_handler import RedisHandler
+from utils.redis_handler import RedisHandler, wait_for_termination
 from pathlib import Path
 from utils.mysql_ops import insert_test_record
 import logging
@@ -102,7 +102,7 @@ def save_parameters_to_flash(actuator_pn:list[str], actuator_sn:list[str], can_m
     # 发送保存参数到flash的CAN消息，假设命令为0x0C，数据为0x87A4429F
     save_to_flash_command = b'\x0C\x9F\x42\xA4\x87\x00\x00\x00'  # 示例保存到flash命令数据
     send_can_data(can_bus, can_msg_address, save_to_flash_command)
-    time.sleep(6)  # 等待保存操作完成
+    time.sleep(1)  # 等待保存操作完成
     #load parameters from flash
     load_from_flash_command = b'\x0D\x01\x00\x00\x00\x00\x00\x00'  # 示例从flash加载命令数据
     send_can_data(can_bus, can_msg_address, load_from_flash_command)
@@ -334,15 +334,18 @@ class RabbitmqCusumer:
                         # time.sleep(500)
                         self.redis_handler.set_value(task_id, 0.0)
                         calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses) 
-                        time.sleep(150)                       
+                        #time.sleep(150)
+                        wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=150)                       
                         self.redis_handler.set_value(task_id, 0.33)                       
                         calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
-                        time.sleep(45)
+                        #time.sleep(45)
+                        wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=45) 
                         self.redis_handler.set_value(task_id, 0.67)                        
                         calibrate_electrical_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
-                        time.sleep(30)
+                        #time.sleep(30)
+                        wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=30)
                         save_parameters_to_flash(part_numbers, serial_numbers, can_msg_addresses)
                         client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                         print("Calibration process completed.")

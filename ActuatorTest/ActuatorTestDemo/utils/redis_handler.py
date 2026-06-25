@@ -1,3 +1,5 @@
+from time import time
+
 import redis
 import json
 
@@ -43,6 +45,16 @@ class RedisHandler:
     def delete_all_keys(self):
         """Delete all keys in the Redis database."""
         self.redis_client.flushdb()
+        
+def wait_for_termination(redis_handler, task_id, check_interval=0.3, total_timeout=300):
+    """Wait for a specific termination status in Redis."""
+    start_time = time()
+    while time() - start_time < total_timeout:
+        status = redis_handler.get_value(task_id)
+        if status == "calibrationtermination":
+            return "termination detected"
+        time.sleep(check_interval)
+    return None
 
 
 if __name__ == "__main__":
