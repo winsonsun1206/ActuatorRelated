@@ -95,6 +95,12 @@ def calibrate_electrical_parameter(actuator_pn:list[str], actuator_sn:list[str],
     #cansend can1 003#0601000000000000
     electrical_param_calibration_command = b'\x07\x01\x00\x00\x00\x00\x00\x00'  # 示例校准命令数据
     send_can_data(can_bus, can_msg_address, electrical_param_calibration_command)
+    
+def powerdown_actuator(actuator_pn:list[str], actuator_sn:list[str], can_msg_address: list[int]):
+    print(f"Powering down actuator with PN: {','.join(actuator_pn)}, SN: {','.join(actuator_sn)}, CAN Address: {','.join(hex(addr) for addr in can_msg_address)}")
+    # 发送断电命令的CAN消息，假设断电命令为0x0B，数据为0x00
+    powerdown_command = b'\x02\x01\x00\x00\x00\x00\x00\x00'  # 示例断电命令数据
+    send_can_data(can_bus, can_msg_address, powerdown_command)
 
 
 def save_parameters_to_flash(actuator_pn:list[str], actuator_sn:list[str], can_msg_address: list[int]):
@@ -336,18 +342,21 @@ class RabbitmqCusumer:
                         calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses) 
                         #time.sleep(150)
                         if wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=150) == "termination detected":
+                            powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
                             break                       
                         self.redis_handler.set_value(task_id, 0.33)                       
                         calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
                         #time.sleep(45)
                         if wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=45) == "termination detected":
+                            powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
                             break
                         self.redis_handler.set_value(task_id, 0.67)                        
                         calibrate_electrical_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
                         #time.sleep(30)
                         if wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=30) == "termination detected":
+                            powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
                             break
                         save_parameters_to_flash(part_numbers, serial_numbers, can_msg_addresses)
                         client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
