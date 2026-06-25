@@ -96,6 +96,11 @@ def calibrate_electrical_parameter(actuator_pn:list[str], actuator_sn:list[str],
     electrical_param_calibration_command = b'\x07\x01\x00\x00\x00\x00\x00\x00'  # 示例校准命令数据
     send_can_data(can_bus, can_msg_address, electrical_param_calibration_command)
 
+def powerdown_actuator(actuator_pn:list[str], actuator_sn:list[str], can_msg_address: list[int]):
+    print(f"Powering down actuator with PN: {','.join(actuator_pn)}, SN: {','.join(actuator_sn)}, CAN Address: {','.join(hex(addr) for addr in can_msg_address)}")
+    # 发送断电命令的CAN消息，假设断电命令为0x0B，数据为0x00
+    powerdown_command = b'\x02\x01\x00\x00\x00\x00\x00\x00'  # 示例断电命令数据
+    send_can_data(can_bus, can_msg_address, powerdown_command)
 
 def save_parameters_to_flash(actuator_pn:list[str], actuator_sn:list[str], can_msg_address: list[int]):
     print(f"Saving parameters to flash for actuator with PN: {','.join(actuator_pn)}, SN: {','.join(actuator_sn)}, CAN Address: {','.join(hex(addr) for addr in can_msg_address)}")
@@ -333,18 +338,32 @@ class RabbitmqCusumer:
                         # time.sleep(500)
                         self.redis_handler.set_value(task_id, 0.0)
                         calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses)  
-                        wait_for_termination(self.redis_handler, task_id)
+                        if wait_for_termination(self.redis_handler, task_id)== "termination detected":
+                            powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
+                            client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
+                            self.redis_handler.set_value(task_id, 1.0)
+                            continue
                         #instead of waiting here with sleep, I want to use check the "termination" status from redis very 0.3s,                    
                         #if it equal to "calibrationtermination", it will jump to client_socket.sendto process
                         
                         self.redis_handler.set_value(task_id, 0.33)                       
                         calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)                        
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
-                        time.sleep(45)
+                        # time.sleep(45)
+                        if wait_for_termination(self.redis_handler, task_id)== "termination detected":
+                            powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
+                            client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
+                            self.redis_handler.set_value(task_id, 1.0)
+                            continue
                         self.redis_handler.set_value(task_id, 0.67)                       
                         calibrate_electrical_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
-                        time.sleep(30)
+                        # time.sleep(30)
+                        if wait_for_termination(self.redis_handler, task_id)== "termination detected":
+                            powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
+                            client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
+                            self.redis_handler.set_value(task_id, 1.0)
+                            continue
                         save_parameters_to_flash(part_numbers, serial_numbers, can_msg_addresses)
                         client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                         print("Calibration process completed.")
