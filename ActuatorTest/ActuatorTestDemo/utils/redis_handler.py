@@ -1,4 +1,4 @@
-from time import time
+import time
 
 import redis
 import json
@@ -48,8 +48,8 @@ class RedisHandler:
         
 def wait_for_termination(redis_handler, task_id, check_interval=0.3, total_timeout=300):
     """Wait for a specific termination status in Redis."""
-    start_time = time()
-    while time() - start_time < total_timeout:
+    start_time = time.time()
+    while time.time() - start_time < total_timeout:
         status = redis_handler.get_value(task_id)
         if status == "calibrationtermination":
             return "termination detected"
