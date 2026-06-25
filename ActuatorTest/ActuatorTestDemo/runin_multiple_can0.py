@@ -338,7 +338,7 @@ class RabbitmqCusumer:
                         # time.sleep(500)
                         self.redis_handler.set_value(task_id, 0.0)
                         calibrate_motor_parameter(part_numbers, serial_numbers, can_msg_addresses)  
-                        if wait_for_termination(self.redis_handler, task_id)== "termination detected":
+                        if wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=150)== "termination detected":
                             powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
                             client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                             self.redis_handler.set_value(task_id, 1.0)
@@ -350,7 +350,7 @@ class RabbitmqCusumer:
                         calibrate_encoder_parameter(part_numbers, serial_numbers, can_msg_addresses)                        
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
                         # time.sleep(45)
-                        if wait_for_termination(self.redis_handler, task_id)== "termination detected":
+                        if wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=45)== "termination detected":
                             powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
                             client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                             self.redis_handler.set_value(task_id, 1.0)
@@ -359,7 +359,7 @@ class RabbitmqCusumer:
                         calibrate_electrical_parameter(part_numbers, serial_numbers, can_msg_addresses)
                         #heartbeat_calibration(can_msg_addresses, timeout=230)
                         # time.sleep(30)
-                        if wait_for_termination(self.redis_handler, task_id)== "termination detected":
+                        if wait_for_termination(self.redis_handler, task_id, check_interval=0.3, total_timeout=30)== "termination detected":
                             powerdown_actuator(part_numbers, serial_numbers, can_msg_addresses)
                             client_socket.sendto(json.dumps({"message": "task finished"}).encode('utf-8'), (HOST, UDP_PORT))
                             self.redis_handler.set_value(task_id, 1.0)
