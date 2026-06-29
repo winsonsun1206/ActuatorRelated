@@ -33,6 +33,7 @@ FILES=(
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can1.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can0.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can1.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py"
 )
 
 # Logging function
