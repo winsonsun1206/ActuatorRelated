@@ -26,13 +26,15 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# List of Python files to execute (保持原本的 5 个纯文件名，删掉带参数的行防止 Bash 误判)
+# List of Python files to execute (完美将两个专属的 CheckCAN 独立脚本合规纳入老系统架构)
 FILES=(
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/init.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can0.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can1.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can0.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can1.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_can0.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_can1.py"
 )
 
 # Logging function
@@ -136,7 +138,6 @@ execute_file() {
     local start_time=$(date +%s)
     
     log "INFO" "Starting execution: $file (monitoring timeout: ${timeout} seconds)"
-    # cd the directory of the file to ensure relative imports work correctly
     local file_dir=$(dirname "$file")
     cd "$file_dir" || return 1
     $PYTHON_CMD -c "import sys; print('Python version:', sys.version)" 2>&1 | log "INFO"
@@ -158,15 +159,12 @@ execute_file() {
     local elapsed=0
     while [ $elapsed -lt $timeout ];
     do
-        # Check if process is still running
         if ! kill -0 $pid 2>/dev/null; then
-            # Process completed before timeout
             wait $pid 2>/dev/null
             local exit_code=$?
             local end_time=$(date +%s)
             local duration=$((end_time - start_time))
             
-            # Remove PID file
             rm -f "$pid_file"
             
             if [ $exit_code -eq 0 ];
@@ -190,7 +188,6 @@ execute_file() {
         log "WARNING" "Process $pid continues running in background (NOT terminated)"
         log "PROCESS" "Background process: $file (PID: $pid)"
         
-        # Update PID file status
         if [ -f "$pid_file" ];
         then
             echo "STATUS=timeout_background" >> "$pid_file"
@@ -257,26 +254,6 @@ main() {
     
     # Check Python environment
     check_python
-    
-    # =========================================================================
-    # 🌟 核心硬编码后台挂载：在这里直接拉起两条通道的 CheckCAN 专属队列服务
-    # =========================================================================
-    log "INFO" "⚡ 正在动态向中央 RabbitMQ 注册维护 CheckCAN 专属检测队列..."
-    
-    # 动态反推提取台架名字 (e.g., rivr-test1)
-    local station_name=$(python3 -c "from utils.station_conf import read_station_conf; print(read_station_conf().get('station_name', 'unknown_station').strip())")
-    
-    # 强制以纯命令行异步挂载后台，彻底斩断 Bash 数组字符串空格误判的缺陷
-    python3 "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py" "canconnect_queue_${station_name}_can0" >> "$LOG_FILE" 2>&1 &
-    local checkcan_pid0=$!
-    save_pid "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py can0" "$checkcan_pid0" >/dev/null
-
-    python3 "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py" "canconnect_queue_${station_name}_can1" >> "$LOG_FILE" 2>&1 &
-    local checkcan_pid1=$!
-    save_pid "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py can1" "$checkcan_pid1" >/dev/null
-
-    log "SUCCESS" "✅ CheckCAN 专属长连接守护进程服务已成功在树莓派挂载！"
-    # =========================================================================
 
     # Initialize counters
     local total=${#FILES[@]}
