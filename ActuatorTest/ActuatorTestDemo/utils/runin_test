@@ -11,7 +11,7 @@ TIMEOUT=3                    # Timeout (seconds)
 LOG_DIR="$HOME/logs"              # Log directory
 mkdir -p "$LOG_DIR"                 # Create log directory if it doesn't exist
 LOG_FILE="$LOG_DIR/execution_$(date +%Y%m%d_%H%M%S).log"  # Log file
-PYTHON_CMD="python3"         # Python command
+PYTHON_CMD="python3"        # Python command
 WORK_DIR=$(pwd)              # Working directory
 PID_DIR="/tmp/python_pids"   # Directory to store PID files
     
@@ -19,22 +19,20 @@ PID_DIR="/tmp/python_pids"   # Directory to store PID files
 mkdir -p "$PID_DIR"
 
 # Color definitions
-RED='\033[0;31m'
-GREEN='\033[0;32m'
+RED='\033;31m'
+GREEN='\033;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# List of Python files to execute
+# List of Python files to execute (保持原本的 5 个纯文件名，删掉带参数的行防止 Bash 误判)
 FILES=(
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/init.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can0.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can1.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can0.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can1.py"
-    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py canconnect_queue_${STATION_NAME}_can0"
-    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py canconnect_queue_${STATION_NAME}_can1"
 )
 
 # Logging function
@@ -109,10 +107,13 @@ list_background_processes() {
     log "INFO" "Background Python processes:"
     local count=0
     
-    for pid_file in "$PID_DIR"/*.pid; do
-        if [ -f "$pid_file" ]; then
+    for pid_file in "$PID_DIR"/*.pid;
+    do
+        if [ -f "$pid_file" ];
+        then
             source "$pid_file" 2>/dev/null
-            if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+            if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null;
+            then
                 log "PROCESS" "  PID: $PID, File: $FILE, Started: $START_TIME"
                 ((count++))
             else
@@ -122,7 +123,8 @@ list_background_processes() {
         fi
     done
     
-    if [ $count -eq 0 ]; then
+    if [ $count -eq 0 ];
+    then
         log "INFO" "  No background processes running"
     fi
 }
@@ -146,7 +148,6 @@ execute_file() {
     $PYTHON_CMD "$file" >> "$LOG_FILE" 2>&1 &   
 
     local pid=$!
-    
     log "INFO" "Process started with PID: $pid"
     
     # Save PID information
@@ -155,20 +156,21 @@ execute_file() {
     
     # Monitor for timeout period WITHOUT terminating
     local elapsed=0
-    while [ $elapsed -lt $timeout ]; do
+    while [ $elapsed -lt $timeout ];
+    do
         # Check if process is still running
         if ! kill -0 $pid 2>/dev/null; then
             # Process completed before timeout
             wait $pid 2>/dev/null
             local exit_code=$?
-            
             local end_time=$(date +%s)
             local duration=$((end_time - start_time))
             
             # Remove PID file
             rm -f "$pid_file"
             
-            if [ $exit_code -eq 0 ]; then
+            if [ $exit_code -eq 0 ];
+            then
                 log "SUCCESS" "✅ $file completed successfully (duration: ${duration} seconds)"
                 return 0
             else
@@ -182,13 +184,15 @@ execute_file() {
     done
     
     # Timeout reached - process is still running
-    if kill -0 $pid 2>/dev/null; then
+    if kill -0 $pid 2>/dev/null;
+    then
         log "WARNING" "⚠️ $file monitoring timeout reached (${timeout} seconds)"
         log "WARNING" "Process $pid continues running in background (NOT terminated)"
         log "PROCESS" "Background process: $file (PID: $pid)"
         
         # Update PID file status
-        if [ -f "$pid_file" ]; then
+        if [ -f "$pid_file" ];
+        then
             echo "STATUS=timeout_background" >> "$pid_file"
             echo "TIMEOUT_TIME=$(date '+%Y-%m-%d %H:%M:%S')" >> "$pid_file"
         fi
@@ -201,13 +205,13 @@ execute_file() {
         # Process ended exactly at timeout moment
         wait $pid 2>/dev/null
         local exit_code=$?
-        
         local end_time=$(date +%s)
         local duration=$((end_time - start_time))
         
         rm -f "$pid_file"
         
-        if [ $exit_code -eq 0 ]; then
+        if [ $exit_code -eq 0 ];
+        then
             log "SUCCESS" "✅ $file completed successfully (duration: ${duration} seconds)"
             return 0
         else
@@ -254,6 +258,26 @@ main() {
     # Check Python environment
     check_python
     
+    # =========================================================================
+    # 🌟 核心硬编码后台挂载：在这里直接拉起两条通道的 CheckCAN 专属队列服务
+    # =========================================================================
+    log "INFO" "⚡ 正在动态向中央 RabbitMQ 注册维护 CheckCAN 专属检测队列..."
+    
+    # 动态反推提取台架名字 (e.g., rivr-test1)
+    local station_name=$(python3 -c "from utils.station_conf import read_station_conf; print(read_station_conf().get('station_name', 'unknown_station').strip())")
+    
+    # 强制以纯命令行异步挂载后台，彻底斩断 Bash 数组字符串空格误判的缺陷
+    python3 "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py" "canconnect_queue_${station_name}_can0" >> "$LOG_FILE" 2>&1 &
+    local checkcan_pid0=$!
+    save_pid "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py can0" "$checkcan_pid0" >/dev/null
+
+    python3 "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py" "canconnect_queue_${station_name}_can1" >> "$LOG_FILE" 2>&1 &
+    local checkcan_pid1=$!
+    save_pid "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py can1" "$checkcan_pid1" >/dev/null
+
+    log "SUCCESS" "✅ CheckCAN 专属长连接守护进程服务已成功在树莓派挂载！"
+    # =========================================================================
+
     # Initialize counters
     local total=${#FILES[@]}
     local success=0
@@ -265,7 +289,8 @@ main() {
     rm -f "$PID_DIR"/*.pid 2>/dev/null
     
     # Iterate through files
-    for i in "${!FILES[@]}"; do
+    for i in "${!FILES[@]}";
+    do
         local file="${FILES[$i]}"
         local index=$((i + 1))
         
@@ -281,18 +306,18 @@ main() {
         # Execute file
         execute_file "$file" $TIMEOUT
         local result=$?
-        
         # Count results
         case $result in
             0)  ((success++)) ;;
-            124) 
+            124)
                 ((timeout++))
                 ;;
             *)  ((failed++)) ;;
         esac
         
         # Pause between files
-        if [ $i -lt $((total - 1)) ]; then
+        if [ $i -lt $((total - 1)) ];
+        then
             log "INFO" "Preparing to execute next file..."
             sleep 1
         fi
