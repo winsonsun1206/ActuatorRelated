@@ -33,7 +33,8 @@ FILES=(
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can1.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can0.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can1.py"
-    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py canconnect_queue_${STATION_NAME}_can0"
+    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_auto.py canconnect_queue_${STATION_NAME}_can1"
 )
 
 # Logging function
