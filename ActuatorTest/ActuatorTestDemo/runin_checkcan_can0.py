@@ -18,13 +18,14 @@ class Can0ConnectivityService:
         self.can_bus = "can0"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 统一绑定专属检测队列
+        # 绑定的专属检测队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can0".strip()
         
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.channel = self.connection.channel()
+        
         self.channel.queue_declare(queue=self.queue_name, durable=True)
         
         self.redis_handler = RedisHandler(host=server_ip, port=6379, db=0)
@@ -39,37 +40,28 @@ class Can0ConnectivityService:
 
     def callback(self, ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页包裹 ========\n{body}\n==========================================")
+        # 1. 打印原始包裹头部
+        print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页原始包裹 ========\n{body}")
         
         task = None
         
-        # 1. 🌟 核心修复：针对 b'\x80\x04...' 结构，优先使用原生二进制 Pickle 进行反序列化
+        # 解析数据
         try:
             task = pickle.loads(body)
-            print(f"[{self.can_bus}] 成功通过二进制 Pickle 还原数据对象。")
-        except Exception as pickle_err:
-            # 2. 如果不是 Pickle，再尝试标准 JSON 文本解析
+        except Exception:
             try:
                 raw_text = body.decode('utf-8', errors='ignore')
                 task = json.loads(raw_text)
-                print(f"[{self.can_bus}] 成功通过标准 JSON 文本还原数据。")
-            except Exception as json_err:
-                # 3. 如果前两者都失败，走极端文本正则碎纸机捞取
-                print(f"[{self.can_bus}] 标准解析皆失败，启动模糊文本正则匹配兜底...")
+            except Exception:
                 try:
                     raw_text = body.decode('utf-8', errors='ignore')
                     task_id_match = re.search(r'task_id[\s\:$]*([a-zA-Z0-9\-]+)', raw_text)
                     task_name_match = re.search(r'task_name[\s\:$]*([a-zA-Z0-9_\-]+)', raw_text)
                     operation_match = re.search(r'operation[\s\:$]*([a-zA-Z0-9_\-]+)', raw_text)
                     sn_match = re.search(r'serial_number[\s\:$]*([a-zA-Z0-9\-]+)', raw_text)
+                    can_id_digit = re.search(r'(?:can_msg_id|can_bus_id)[\s\:$]*([0-9]+)', raw_text)
                     
-                    can_id_digit = re.search(r'can_msg_id[\s\:$]*([0-9]+)', raw_text)
-                    if can_id_digit:
-                        can_msg_id_val = int(can_id_digit.group(1))
-                    else:
-                        can_id_alpha = re.search(r'can_msg_id[\s\:$]*([a-zA-Z0-9]+)', raw_text)
-                        # 如果像截图中混淆成了特定字符（如包含K的十六进制或误导字符），保底给 1
-                        can_msg_id_val = 1 
+                    can_msg_id_val = int(can_id_digit.group(1)) if can_id_digit else 1
 
                     task = {
                         "task_id": task_id_match.group(1) if task_id_match else f"{self.station_name}_{self.can_bus}_fixed_task",
@@ -77,33 +69,56 @@ class Can0ConnectivityService:
                         "operation": operation_match.group(1) if operation_match else "",
                         "parameters": []
                     }
-                    
                     if sn_match:
                         task["parameters"].append({
                             "serial_number": sn_match.group(1),
                             "can_msg_id": can_msg_id_val
                         })
-                    print(f"[{self.can_bus}] 极端文本正则兜底匹配成功 -> {task}")
-                except Exception as re_err:
-                    print(f"[{self.can_bus}] 深度解析也宣告失败，丢弃该包: {re_err}")
+                except Exception:
                     return
                 
         if task is not None:
+            # 标准化字典
+            if not isinstance(task, dict):
+                if hasattr(task, '__dict__'):
+                    task = task.__dict__
+                else:
+                    try:
+                        task = dict(task)
+                    except Exception:
+                        pass
+            
+            # 2. 紧接着原始包之后，直接打印标准 JSON 字典键值对
+            beautiful_json = json.dumps(task, indent=4, ensure_ascii=False)
+            print(f"----------------------------------------\n还原后的标准 JSON 字典键值对:\n{beautiful_json}\n==========================================")
+            
+            # 3. 🌟 【核心修改】将还原出来的标准 JSON 字符串重新发布到对应检测队列中
+            try:
+                self.channel.basic_publish(
+                    exchange='',
+                    routing_key=self.queue_name, # 对应发送到当前这个队列
+                    body=json.dumps(task, ensure_ascii=False).encode('utf-8'),
+                    properties=pika.BasicProperties(
+                        content_type='application/json',
+                        delivery_mode=2 # 消息持久化
+                    )
+                )
+            except Exception as mq_err:
+                print(f"[{self.can_bus}] 转发标准 JSON 失败: {mq_err}")
+                
             self.task_queue.put_nowait(task)
 
     def _update_live_monitor(self, target_key, log_message):
         try:
             self.redis_handler.redis_client.setex(target_key, 600, str(log_message))
-        except Exception as e:
-            print(f"[{self.can_bus}] 同步网页终端异常: {e}")
+        except Exception:
+            pass
 
     def _run_heartbeat_loop(self, target_ids, stop_event, task_id, redis_key):
         from utils.send_data import send_heartbeat
         success_msg = f"SUCCESS: [{self.can_bus}] 硬件链路通畅。检测心跳持续维持有效 ID {target_ids} 的长连接..."
-        
         self._update_live_monitor(task_id, success_msg)
         self._update_live_monitor(redis_key, success_msg)
-        
         while not stop_event.is_set():
             try:
                 send_heartbeat(self.can_bus, target_ids)
@@ -125,17 +140,6 @@ class Can0ConnectivityService:
                 task = self.task_queue.get_nowait()
                 if task is None:
                     continue
-                
-                if not isinstance(task, dict):
-                    if hasattr(task, '__dict__'):
-                        task = task.__dict__
-                    elif hasattr(task, 'get'):
-                        pass
-                    else:
-                        try:
-                            task = dict(task)
-                        except Exception:
-                            continue
 
                 task_name = str(task.get('task_name', task.get('operation', ''))).strip()
                 operation = str(task.get('operation', '')).strip()
@@ -158,19 +162,28 @@ class Can0ConnectivityService:
                     expected_ids = []
                     if isinstance(test_slots, list):
                         for slot in test_slots:
-                            if isinstance(slot, dict) and str(slot.get('serial_number', '')).strip() != "":
-                                try:
-                                    expected_ids.append(int(slot['can_msg_id']))
-                                except (KeyError, ValueError):
-                                    pass
-                            elif hasattr(slot, 'can_msg_id') and getattr(slot, 'serial_number', '') != "":
-                                try:
-                                    expected_ids.append(int(slot.can_msg_id))
-                                except (ValueError, TypeError):
-                                    pass
+                            if not isinstance(slot, dict) and hasattr(slot, '__dict__'):
+                                slot = slot.__dict__
+                                
+                            if isinstance(slot, dict):
+                                target_id_val = slot.get('can_msg_id') or slot.get('can_bus_id')
+                                sn_val = str(slot.get('serial_number', '')).strip()
+                                if sn_val != "" and target_id_val is not None:
+                                    try:
+                                        expected_ids.append(int(target_id_val))
+                                    except (ValueError, TypeError):
+                                        pass
+                                        
+                    if not expected_ids:
+                        fallback_id = task.get('can_msg_id') or task.get('can_bus_id')
+                        if fallback_id is not None:
+                            try:
+                                expected_ids.append(int(fallback_id))
+                            except Exception:
+                                pass
 
                     if not expected_ids:
-                        err_txt = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
+                        err_txt = "未检测到输入任何序列号或有效的 CAN ID 槽位！"
                         self.redis_handler.set_value(redis_key, {"status": "error", "message": err_txt})
                         self._update_live_monitor(task_id, f"ERROR: {err_txt}")
                         self._update_live_monitor(redis_key, f"ERROR: {err_txt}")
@@ -193,12 +206,10 @@ class Can0ConnectivityService:
                         if msg is None:
                             time.sleep(0.001)
                             continue
-                        
                         if msg.arbitration_id in range(256, 512):
                             can_bus_id = msg.arbitration_id - 256
                             if can_bus_id in expected_ids:
                                 found_devices.add(can_bus_id)
-                                
                         if all(idx in found_devices for idx in expected_ids):
                             break
                         time.sleep(0.001)
@@ -208,12 +219,10 @@ class Can0ConnectivityService:
 
                     if not missing_ids or True:
                         self.redis_handler.set_value(redis_key, {"status": "success", "message": "can全识别到了继续下一步"})
-                        
                         stop_event = threading.Event()
                         hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event, task_id, redis_key))
                         hb_thread.daemon = True
                         hb_thread.start()
-                        
                         self.heartbeat_event = stop_event
                         self.heartbeat_thread = hb_thread
                     else:
