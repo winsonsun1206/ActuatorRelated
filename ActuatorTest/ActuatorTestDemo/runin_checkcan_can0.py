@@ -9,6 +9,7 @@ import can
 import queue
 import pickle
 import threading
+import re
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 
@@ -38,18 +39,56 @@ class Can0ConnectivityService:
 
     def callback(self, ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        print(f"\n======== [RAWMQ_PACK] can0 抓到网页包裹 ========\n{body}\n==========================================")
+        print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页包裹 ========\n{body}\n==========================================")
         
         task = None
-        # 🌟 核心兼容改进：自动识别解密标准 JSON 文本与原厂二进制 Pickle 字节流
+        raw_text = ""
         try:
-            task = json.loads(body.decode('utf-8'))
+            raw_text = body.decode('utf-8', errors='ignore')
+            # 1. 优先尝试标准 JSON 解析
+            task = json.loads(raw_text)
         except Exception:
             try:
+                # 2. 尝试原厂二进制 Pickle 解析
                 task = pickle.loads(body)
-            except Exception as e:
-                print(f"[{self.can_bus}] 二进制及文本反序列化皆失败: {e}")
-                return
+            except Exception:
+                # 3. 🌟 核心兼容改进：若前两者皆失败，针对破损/非标准畸形文本启动正则暴力提取
+                print(f"[{self.can_bus}] 标准反序列化失败，检测到非标准文本，启动正则兼容解析...")
+                try:
+                    # 饱和式匹配核心键值对
+                    task_id_match = re.search(r'task_id[\s\:$]*([a-zA-Z0-9\-]+)', raw_text)
+                    task_name_match = re.search(r'task_name[\s\:$]*([a-zA-Z0-9_\-]+)', raw_text)
+                    operation_match = re.search(r'operation[\s\:$]*([a-zA-Z0-9_\-]+)', raw_text)
+                    sn_match = re.search(r'serial_number[\s\:$]*([a-zA-Z0-9\-]+)', raw_text)
+                    
+                    # 针对图片中特殊的 can_msg_idK 形式进行兼容
+                    can_id_digit = re.search(r'can_msg_id[\s\:$]*([0-9]+)', raw_text)
+                    if can_id_digit:
+                        can_msg_id_val = int(can_id_digit.group(1))
+                    else:
+                        # 如果是像图片中混淆成了单个字母 K，尝试提取后根据业务映射，这里保底给个 1 (或者您所需的默认值)
+                        can_id_alpha = re.search(r'can_msg_id[\s\:$]*([a-zA-Z0-9]+)', raw_text)
+                        print(f"[{self.can_bus}] 警告: 提取到非数字的 CAN ID 字符串: {can_id_alpha.group(1) if can_id_alpha else 'None'}，自动降级映射为 1")
+                        can_msg_id_val = 1 
+
+                    # 强制重组标准字典结构
+                    task = {
+                        "task_id": task_id_match.group(1) if task_id_match else f"{self.station_name}_{self.can_bus}_fixed_task",
+                        "task_name": task_name_match.group(1) if task_name_match else "",
+                        "operation": operation_match.group(1) if operation_match else "",
+                        "parameters": []
+                    }
+                    
+                    if sn_match:
+                        task["parameters"].append({
+                            "serial_number": sn_match.group(1),
+                            "can_msg_id": can_msg_id_val
+                        })
+                        
+                    print(f"[{self.can_bus}] 畸形文本正则修复成功 -> {task}")
+                except Exception as re_err:
+                    print(f"[{self.can_bus}] 正则暴力解析也宣告失败: {re_err}")
+                    return
                 
         if task is not None:
             self.task_queue.put_nowait(task)
@@ -89,29 +128,24 @@ class Can0ConnectivityService:
                 if task is None:
                     continue
                 
-                # 🌟 强行将还原出来的 Python 类对象、实例反射并强制拆解转化为标准的 Dict 字典
                 if not isinstance(task, dict):
                     if hasattr(task, '__dict__'):
                         task = task.__dict__
                     elif hasattr(task, 'get'):
                         pass
                     else:
-                        # 兼容某些打包成复杂结构的元组或命名属性
                         try:
                             task = dict(task)
                         except Exception:
                             continue
 
-                # 提取状态字段与操作字段
                 task_name = str(task.get('task_name', task.get('operation', ''))).strip()
                 operation = str(task.get('operation', '')).strip()
                 
-                # 饱和式提取各种可能的 UUID 命名规范
                 task_id = task.get('task_id') or task.get('id') or task.get('job_id') or f"{self.station_name}_{self.can_bus}_check_task"
                 task_id = str(task_id).strip()
                 redis_key = f"{self.station_name}_{self.can_bus}_check_result".strip()
 
-                # 精准模糊匹配任何含有 check 或者 runin 测试前置的包名
                 if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
                     self._stop_existing_heartbeat()
                     
@@ -119,7 +153,6 @@ class Can0ConnectivityService:
                     self._update_live_monitor(task_id, init_msg)
                     self._update_live_monitor(redis_key, init_msg)
                     
-                    # 动态兼容列表形式、元组形式或参数字典形式传入的槽位配置
                     test_slots = task.get('parameters', [])
                     if isinstance(test_slots, dict):
                         test_slots = list(test_slots.values())
@@ -160,7 +193,7 @@ class Can0ConnectivityService:
                     while time.time() - start_time < 5.0:
                         msg = can_bus_interface.recv(timeout=0.1)
                         if msg is None:
-                            time.sleep(0.001)  # 降能让步
+                            time.sleep(0.001)
                             continue
                         
                         if msg.arbitration_id in range(256, 512):
