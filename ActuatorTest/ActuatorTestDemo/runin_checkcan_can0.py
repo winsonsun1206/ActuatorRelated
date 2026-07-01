@@ -18,9 +18,8 @@ class Can0ConnectivityService:
         self.can_bus = "can0"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 🌟 听和发全部统一使用工程师指定的这一个队列
+        # 听和发全部统一使用工程师指定的这一个队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can0".strip()
-        
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
         
         # 接收连接
@@ -29,7 +28,7 @@ class Can0ConnectivityService:
         self.channel = self.connection.channel()
         self.channel.queue_declare(queue=self.queue_name, durable=True)
         
-        # 发送连接（必须分开连接防协议撞车）
+        # 发送连接
         self.send_connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.send_channel = self.send_connection.channel()
@@ -46,8 +45,6 @@ class Can0ConnectivityService:
         self.heartbeat_thread = None
 
     def callback(self, ch, method, properties, body):
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-        
         task = None
         try:
             task = pickle.loads(body)
@@ -78,6 +75,7 @@ class Can0ConnectivityService:
                             "can_msg_id": can_msg_id_val
                         })
                 except Exception:
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
                     return
                 
         if task is not None:
@@ -90,11 +88,14 @@ class Can0ConnectivityService:
                     except Exception:
                         pass
             
-            # 🌟 拦截机制：如果包里没有 task_name 和 operation，说明这是发出来的检测结果包
-            # 我们直接在此处默默拦截并 Ack 掉它，绝不进入检测队列，防止秒吞
+            # 🌟 核心拦截留存机制：如果是结果包，不处理，不Ack，而是Nack重新丢回队列留给网页看，并直接返回
             if not task.get('task_name') and not task.get('operation') and len(task) == 1:
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+                time.sleep(0.5) # 防止过于频繁的反复拉取
                 return
 
+            # 确认是任务包之后，再执行真正的 Ack 逻辑
+            ch.basic_ack(delivery_tag=method.delivery_tag)
             print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页原始包裹 ========\n{body}")
             beautiful_json = json.dumps(task, indent=4, ensure_ascii=False)
             print(f"----------------------------------------\n还原后的标准 JSON 字典键值对:\n{beautiful_json}\n==========================================")
@@ -226,7 +227,6 @@ class Can0ConnectivityService:
                         result_sentence = "所有电机均已检测到，请继续下一步！"
                         status_redis = "success"
                         
-                        # 启用防休眠心跳包
                         stop_event = threading.Event()
                         hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event, task_id, redis_key))
                         hb_thread.daemon = True
@@ -238,7 +238,6 @@ class Can0ConnectivityService:
                         result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
                         status_redis = "missing"
 
-                    # 🌟 核心：结果同样发回工程师指定的原本队列中
                     result_payload = {task_id: result_sentence}
                     try:
                         self.send_channel.basic_publish(
