@@ -37,6 +37,7 @@ class Can1ConnectivityService:
 
     def callback(self, ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
+        print(f"\n======== [RAWMQ_PACK] 抓到网页包裹 ========\n{body.decode('utf-8', errors='ignore')}\n==========================================")
         try:
             try:
                 task = json.loads(body.decode('utf-8'))
