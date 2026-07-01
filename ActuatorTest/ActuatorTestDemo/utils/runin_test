@@ -139,16 +139,18 @@ execute_file() {
     
     log "INFO" "Starting execution: $file (monitoring timeout: ${timeout} seconds)"
     local file_dir=$(dirname "$file")
-    cd "$file_dir" || return 1
-    $PYTHON_CMD -c "import sys; print('Python version:', sys.version)" 2>&1 | log "INFO"
-    $PYTHON_CMD -c "import os; print('Current working directory:', os.getcwd())" 2>&1 | log "INFO"
-    $PYTHON_CMD -c "print('Executing file: $file')" 2>&1 | log "INFO"
-    $PYTHON_CMD -c "import time; print('Start time:', time.strftime('%Y-%m-%d %H:%M:%S'))" 2>&1 | log "INFO"
 
-    # IMPORTANT: Start Python process in background WITHOUT timeout command
-    $PYTHON_CMD "$file" >> "$LOG_FILE" 2>&1 &   
-
-    local pid=$!
+    # 🌟 核心改进：开启子 Shell 并在里面执行 cd 与启动，保证工作路径完美物理隔离，不污染其他循环
+    (
+        cd "$file_dir" || exit 1
+        $PYTHON_CMD "$file" >> "$LOG_FILE" 2>&1 &
+        echo $! > /tmp/current_proc.pid
+    )
+    
+    # 从中转区取出进程真实的 PID
+    local pid=$(cat /tmp/current_proc.pid)
+    rm -f /tmp/current_proc.pid
+    
     log "INFO" "Process started with PID: $pid"
     
     # Save PID information
@@ -159,7 +161,8 @@ execute_file() {
     local elapsed=0
     while [ $elapsed -lt $timeout ];
     do
-        if ! kill -0 $pid 2>/dev/null; then
+        if ! kill -0 $pid 2>/dev/null;
+        then
             wait $pid 2>/dev/null
             local exit_code=$?
             local end_time=$(date +%s)
@@ -227,7 +230,8 @@ show_final_status() {
     # List all remaining background processes
     list_background_processes
     
-    if [ -d "$PID_DIR" ] && [ "$(ls -A "$PID_DIR" 2>/dev/null)" ]; then
+    if [ -d "$PID_DIR" ] && [ "$(ls -A "$PID_DIR" 2>/dev/null)" ];
+    then
         log "WARNING" ""
         log "WARNING" "To check on background processes later:"
         log "WARNING" "  ps aux | grep python"
