@@ -18,17 +18,14 @@ class Can0ConnectivityService:
         self.can_bus = "can0"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 听和发全部统一使用工程师指定的这一个队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can0".strip()
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
         
-        # 接收连接
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.channel = self.connection.channel()
         self.channel.queue_declare(queue=self.queue_name, durable=True)
         
-        # 发送连接
         self.send_connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.send_channel = self.send_connection.channel()
@@ -43,8 +40,14 @@ class Can0ConnectivityService:
         
         self.heartbeat_event = None
         self.heartbeat_thread = None
+        self.consumer_tag = None
 
     def callback(self, ch, method, properties, body):
+        # 🌟 核心改进：通过 properties 里的 headers 标签，判断如果是自己刚才发出来的结果，直接 Ack 掉并退出，绝不进入检测流程，防止卡死 Unacked
+        if properties.headers and properties.headers.get('msg_type') == 'check_result_package':
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+
         task = None
         try:
             task = pickle.loads(body)
@@ -88,13 +91,11 @@ class Can0ConnectivityService:
                     except Exception:
                         pass
             
-            # 🌟 核心拦截留存机制：如果是结果包，不处理，不Ack，而是Nack重新丢回队列留给网页看，并直接返回
+            # 双重过滤保障
             if not task.get('task_name') and not task.get('operation') and len(task) == 1:
-                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
-                time.sleep(0.5) # 防止过于频繁的反复拉取
+                ch.basic_ack(delivery_tag=method.delivery_tag)
                 return
 
-            # 确认是任务包之后，再执行真正的 Ack 逻辑
             ch.basic_ack(delivery_tag=method.delivery_tag)
             print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页原始包裹 ========\n{body}")
             beautiful_json = json.dumps(task, indent=4, ensure_ascii=False)
@@ -183,7 +184,7 @@ class Can0ConnectivityService:
                             self.send_channel.basic_publish(
                                 exchange='', routing_key=self.queue_name,
                                 body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
-                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
+                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2, headers={'msg_type': 'check_result_package'})
                             )
                         except Exception:
                             pass
@@ -197,7 +198,7 @@ class Can0ConnectivityService:
                             self.send_channel.basic_publish(
                                 exchange='', routing_key=self.queue_name,
                                 body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
-                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
+                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2, headers={'msg_type': 'check_result_package'})
                         )
                         except Exception:
                             pass
@@ -227,6 +228,7 @@ class Can0ConnectivityService:
                         result_sentence = "所有电机均已检测到，请继续下一步！"
                         status_redis = "success"
                         
+                        # 启动守护心跳
                         stop_event = threading.Event()
                         hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event, task_id, redis_key))
                         hb_thread.daemon = True
@@ -240,13 +242,18 @@ class Can0ConnectivityService:
 
                     result_payload = {task_id: result_sentence}
                     try:
+                        # 🌟 注入 headers 属性区分这个消息是‘结果包’
                         self.send_channel.basic_publish(
                             exchange='',
                             routing_key=self.queue_name,
                             body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
-                            properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
+                            properties=pika.BasicProperties(
+                                content_type='application/json',
+                                delivery_mode=2,
+                                headers={'msg_type': 'check_result_package'} # 🌟 打上特殊的电子标签
+                            )
                         )
-                        print(f"✨✨ [{self.can_bus}] 结果键值对已成功送回原始 MQ 队列中!")
+                        print(f"✨✨ [{self.can_bus}] 结果键值对已成功送回原始 MQ 队列中，且处于 Ready 留存状态!")
                     except Exception as mq_err:
                         print(f"[{self.can_bus}] 发送结果到 RabbitMQ 失败: {mq_err}")
 
@@ -259,7 +266,7 @@ class Can0ConnectivityService:
                 continue
 
     def start_consuming(self):
-        self.channel.basic_consume(queue=self.queue_name, on_message_callback=self.callback, auto_ack=False)
+        self.consumer_tag = self.channel.basic_consume(queue=self.queue_name, on_message_callback=self.callback, auto_ack=False)
         print(f"成功挂起专属独立检测服务: [{self.queue_name}]")
         self.channel.start_consuming()
 
