@@ -18,14 +18,20 @@ class Can0ConnectivityService:
         self.can_bus = "can0"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 绑定的专属检测队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can0".strip()
-        
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
+        
+        # 🌟 修复核心：创建两个独立的连接，一个专门收，一个专门发
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.channel = self.connection.channel()
         self.channel.queue_declare(queue=self.queue_name, durable=True)
+        
+        # 🌟 专属发送连接与通道
+        self.send_connection = pika.BlockingConnection(pika.ConnectionParameters(
+            server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
+        self.send_channel = self.send_connection.channel()
+        self.send_channel.queue_declare(queue=self.queue_name, durable=True)
         
         self.redis_handler = RedisHandler(host=server_ip, port=6379, db=0)
         self.task_queue = queue.Queue()
@@ -39,8 +45,6 @@ class Can0ConnectivityService:
 
     def callback(self, ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        
-        # 纯净化界面：仅打印包裹头部和基础数据
         print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页原始包裹 ========\n{body}")
         
         task = None
@@ -88,7 +92,6 @@ class Can0ConnectivityService:
             beautiful_json = json.dumps(task, indent=4, ensure_ascii=False)
             print(f"----------------------------------------\n还原后的标准 JSON 字典键值对:\n{beautiful_json}\n==========================================")
             
-            # 判断如果是包含检测指令，将其推入本地任务队列进行物理硬件扫描检测
             task_name = str(task.get('task_name', task.get('operation', ''))).strip()
             operation = str(task.get('operation', '')).strip()
             if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
@@ -121,7 +124,6 @@ class Can0ConnectivityService:
 
                 self._stop_existing_heartbeat()
                 
-                # 1. 🌟 精准识别输入框：只有输了序列号的才加入预期的 expected_ids 列表
                 test_slots = task.get('parameters', [])
                 if isinstance(test_slots, dict):
                     test_slots = list(test_slots.values())
@@ -136,14 +138,12 @@ class Can0ConnectivityService:
                             sn_val = str(slot.get('serial_number', '')).strip()
                             target_id_val = slot.get('can_msg_id') or slot.get('can_bus_id')
                             
-                            # 🌟 核心判断：方框中输入了序列号才代表这个 ID 需要被检测
                             if sn_val != "" and target_id_val is not None:
                                 try:
                                     expected_ids.append(int(target_id_val))
                                 except (ValueError, TypeError):
                                     pass
 
-                # 兜底：如果列表是空的，尝试获取外层可能的单个 ID（同样要求有输入）
                 if not expected_ids:
                     fallback_id = task.get('can_msg_id') or task.get('can_bus_id')
                     if fallback_id is not None:
@@ -152,12 +152,12 @@ class Can0ConnectivityService:
                         except Exception:
                             pass
 
-                # 如果确实什么都没填，直接向 MQ 返回特定报错格式
                 if not expected_ids:
                     result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
                     result_payload = {task_id: result_sentence}
                     try:
-                        self.channel.basic_publish(
+                        # 🌟 使用独立的发送通道
+                        self.send_channel.basic_publish(
                             exchange='',
                             routing_key=self.queue_name,
                             body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
@@ -167,13 +167,12 @@ class Can0ConnectivityService:
                         pass
                     continue
 
-                # 2. 物理总线扫描 5.0 秒
                 try:
                     can_bus_interface = can.interface.Bus(channel=self.can_bus, interface='socketcan', receive_timeout=0.1)
                 except Exception as e:
                     result_sentence = f"物理接口 [{self.can_bus}] 开启失败: {str(e)}"
                     try:
-                        self.channel.basic_publish(
+                        self.send_channel.basic_publish(
                             exchange='',
                             routing_key=self.queue_name,
                             body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
@@ -201,10 +200,8 @@ class Can0ConnectivityService:
                 
                 can_bus_interface.shutdown()
                 
-                # 3. 🌟 根据物理扫描结果，精密匹配缺失的 ID
                 missing_ids = [idx for idx in expected_ids if idx not in found_devices]
 
-                # 4. 🌟 按工程师要求的逻辑生成指定键值对的一句话结果
                 if not missing_ids:
                     result_sentence = "所有电机均已检测到，请继续下一步！"
                     status_redis = "success"
@@ -213,15 +210,13 @@ class Can0ConnectivityService:
                     result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
                     status_redis = "missing"
 
-                # 5. 🌟 【核心发往RabbitMQ】封装为 { "task_id": "判断内容一句话" } 的键值对格式
-                result_payload = {
-                    task_id: result_sentence
-                }
+                result_payload = {task_id: result_sentence}
                 
                 try:
-                    self.channel.basic_publish(
+                    # 🌟 核心：使用独立的发送通道发布，绝不影响消费通道
+                    self.send_channel.basic_publish(
                         exchange='',
-                        routing_key=self.queue_name, # 发送到方框对应的队列
+                        routing_key=self.queue_name,
                         body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
                         properties=pika.BasicProperties(
                             content_type='application/json',
@@ -232,7 +227,6 @@ class Can0ConnectivityService:
                 except Exception as mq_err:
                     print(f"[{self.can_bus}] 发送结果键值对到 RabbitMQ 失败: {mq_err}")
 
-                # 同步更新 Redis 和 网页 Live 监视器面板
                 self.redis_handler.set_value(redis_key, {"status": status_redis, "message": result_sentence})
                 self._update_live_monitor(task_id, result_sentence)
                 self._update_live_monitor(redis_key, result_sentence)
