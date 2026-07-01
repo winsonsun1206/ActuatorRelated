@@ -163,8 +163,8 @@ class Can0ConnectivityService:
                 elif task_name == 'complete_test' or operation == 'complete':
                     self._stop_existing_heartbeat()
                     self.redis_handler.set_value(redis_key, {"status": "idle", "message": "等待检测"})
-                    self._update_live_monitor(task_id, "STATUS: 检测状态已重置，心跳线程已成功安全断开。")
-
+                    self._update_live_monitor(task_id, "STATUS: 检测状态已重置，心跳守护线程已安全释放。")
+                    self._update_live_monitor(redis_key, "STATUS: 检测状态已重置，心跳守护线程已安全释放。")
             except queue.Empty:
                 # 🌟 绝杀优化：队列为空时休眠，降低 CPU
                 time.sleep(0.01)
