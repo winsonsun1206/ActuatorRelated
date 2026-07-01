@@ -135,9 +135,14 @@ class Can0ConnectivityService:
                     can_bus_interface.shutdown()
                     missing_ids = [idx for idx in expected_ids if idx not in found_devices]
 
+                    # ====== 核心安全修改：饱和式写入 Redis 键，彻底打穿前端黑框轮询 ======
                     if not missing_ids:
+                        # 1. 满足网页状态栏：写进固定格式状态键
                         self.redis_handler.set_value(redis_key, {"status": "success", "message": "can全识别到了继续下一步"})
-                        self._update_live_monitor(task_id, f"SUCCESS: [{self.can_bus}] 通道硬件检测成功通过！请开始正式测试。")
+                        
+                        # 2. 满足最下方黑框：同时向动态 UUID 键和固定状态键写入纯文本成功日志
+                        self._update_live_monitor(task_id, f"SUCCESS: [{self.can_bus}] 通道硬件检测成功通过！请点击 Execute 或进行下一步。")
+                        self._update_live_monitor(redis_key, f"SUCCESS: [{self.can_bus}] 通道硬件检测成功通过！请点击 Execute 或进行下一步。")
                         
                         stop_event = threading.Event()
                         hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event, task_id))
@@ -148,9 +153,12 @@ class Can0ConnectivityService:
                         self.heartbeat_thread = hb_thread
                     else:
                         missing_str = ", ".join(map(str, missing_ids))
-                        err_txt = f"检测到 CANID: {missing_str} 缺失。请检查硬件线缆连接。"
+                        err_txt = f"检测到 CANID: {missing_str} 缺失。请检查线缆连接。"
+                        
+                        # 饱和式写入缺失警报
                         self.redis_handler.set_value(redis_key, {"status": "missing", "missing_ids": missing_ids, "message": err_txt})
                         self._update_live_monitor(task_id, f"CRITICAL ERROR: {err_txt}")
+                        self._update_live_monitor(redis_key, f"CRITICAL ERROR: {err_txt}")
 
                 elif task_name == 'complete_test' or operation == 'complete':
                     self._stop_existing_heartbeat()
