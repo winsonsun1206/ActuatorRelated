@@ -26,15 +26,13 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# List of Python files to execute (完美将两个专属的 CheckCAN 独立脚本合规纳入老系统架构)
+# List of Python files to execute (🌟 恢复到以前的版本，只有最初的这 5 个)
 FILES=(
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/init.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can0.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/receive_can1.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can0.py"
     "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_multiple_can1.py"
-    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_can0.py"
-    "$HOME/ActuatorRelated/ActuatorTest/ActuatorTestDemo/runin_checkcan_can1.py"
 )
 
 # Logging function
@@ -49,7 +47,6 @@ log() {
         "WARNING") echo -e "${YELLOW}[$timestamp] $message${NC}" ;;
         "ERROR")   echo -e "${RED}[$timestamp] $message${NC}" ;;
         "PROCESS") echo -e "${PURPLE}[$timestamp] $message${NC}" ;;
-        *)         echo -e "[$timestamp] $message" ;;
     esac
     
     echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
@@ -139,18 +136,16 @@ execute_file() {
     
     log "INFO" "Starting execution: $file (monitoring timeout: ${timeout} seconds)"
     local file_dir=$(dirname "$file")
+    cd "$file_dir" || return 1
+    $PYTHON_CMD -c "import sys; print('Python version:', sys.version)" 2>&1 | log "INFO"
+    $PYTHON_CMD -c "import os; print('Current working directory:', os.getcwd())" 2>&1 | log "INFO"
+    $PYTHON_CMD -c "print('Executing file: $file')" 2>&1 | log "INFO"
+    $PYTHON_CMD -c "import time; print('Start time:', time.strftime('%Y-%m-%d %H:%M:%S'))" 2>&1 | log "INFO"
 
-    # 🌟 核心改进：开启子 Shell 并在里面执行 cd 与启动，保证工作路径完美物理隔离，不污染其他循环
-    (
-        cd "$file_dir" || exit 1
-        $PYTHON_CMD "$file" >> "$LOG_FILE" 2>&1 &
-        echo $! > /tmp/current_proc.pid
-    )
-    
-    # 从中转区取出进程真实的 PID
-    local pid=$(cat /tmp/current_proc.pid)
-    rm -f /tmp/current_proc.pid
-    
+    # IMPORTANT: Start Python process in background WITHOUT timeout command
+    $PYTHON_CMD "$file" >> "$LOG_FILE" 2>&1 &   
+
+    local pid=$!
     log "INFO" "Process started with PID: $pid"
     
     # Save PID information
