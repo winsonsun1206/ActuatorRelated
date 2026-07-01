@@ -18,22 +18,22 @@ class Can1ConnectivityService:
         self.can_bus = "can1"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 接收任务的队列
+        # 🌟 听和发全部统一使用工程师指定的这一个队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can1".strip()
-        # 回传结果的独立队列（供网页端 Live Task Monitor 读取）
-        self.result_queue_name = f"canconnect_result_queue_{self.station_name}_can1".strip()
         
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
         
+        # 接收连接
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.channel = self.connection.channel()
         self.channel.queue_declare(queue=self.queue_name, durable=True)
         
+        # 发送连接（必须分开连接防协议撞车）
         self.send_connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.send_channel = self.send_connection.channel()
-        self.send_channel.queue_declare(queue=self.result_queue_name, durable=True)
+        self.send_channel.queue_declare(queue=self.queue_name, durable=True)
         
         self.redis_handler = RedisHandler(host=server_ip, port=6379, db=0)
         self.task_queue = queue.Queue()
@@ -90,8 +90,9 @@ class Can1ConnectivityService:
                     except Exception:
                         pass
             
-            # 过滤结果队列的自发包
-            if task.get('task_name') == "" and task.get('operation') == "" and len(task) == 1:
+            # 🌟 拦截机制：如果包里没有 task_name 和 operation，说明这是发出来的检测结果包
+            # 我们直接在此处默默拦截并 Ack 掉它，绝不进入检测队列，防止秒吞
+            if not task.get('task_name') and not task.get('operation') and len(task) == 1:
                 return
 
             print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页原始包裹 ========\n{body}")
@@ -139,13 +140,11 @@ class Can1ConnectivityService:
                 task_id = str(task_id).strip()
                 redis_key = f"{self.station_name}_{self.can_bus}_check_result".strip()
 
-                # 如果收到完成或重置包，停掉心跳
                 if 'complete' in task_name or 'complete' in operation:
                     self._stop_existing_heartbeat()
                     self.redis_handler.set_value(redis_key, {"status": "idle", "message": "等待检测"})
                     continue
 
-                # 执行 checkcan 核心检测逻辑
                 if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
                     self._stop_existing_heartbeat()
                     
@@ -163,7 +162,6 @@ class Can1ConnectivityService:
                                 sn_val = str(slot.get('serial_number', '')).strip()
                                 target_id_val = slot.get('can_msg_id') or slot.get('can_bus_id')
                                 
-                                # 填了编码才检测
                                 if sn_val != "" and target_id_val is not None:
                                     try:
                                         expected_ids.append(int(target_id_val))
@@ -182,7 +180,7 @@ class Can1ConnectivityService:
                         result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
                         try:
                             self.send_channel.basic_publish(
-                                exchange='', routing_key=self.result_queue_name,
+                                exchange='', routing_key=self.queue_name,
                                 body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
                                 properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
                             )
@@ -196,7 +194,7 @@ class Can1ConnectivityService:
                         result_sentence = f"物理接口 [{self.can_bus}] 开启失败: {str(e)}"
                         try:
                             self.send_channel.basic_publish(
-                                exchange='', routing_key=self.result_queue_name,
+                                exchange='', routing_key=self.queue_name,
                                 body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
                                 properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
                         )
@@ -224,12 +222,11 @@ class Can1ConnectivityService:
                     
                     missing_ids = [idx for idx in expected_ids if idx not in found_devices]
 
-                    # 判定并组装特定一句话结果
                     if not missing_ids:
                         result_sentence = "所有电机均已检测到，请继续下一步！"
                         status_redis = "success"
                         
-                        # 🌟 核心点：全通之后，启动心跳发送守护线程，防休眠！
+                        # 启用防休眠心跳包
                         stop_event = threading.Event()
                         hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event, task_id, redis_key))
                         hb_thread.daemon = True
@@ -241,16 +238,16 @@ class Can1ConnectivityService:
                         result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
                         status_redis = "missing"
 
-                    # 回发特定格式键值对给网页端 Live Task Monitor
+                    # 🌟 核心：结果同样发回工程师指定的原本队列中
                     result_payload = {task_id: result_sentence}
                     try:
                         self.send_channel.basic_publish(
                             exchange='',
-                            routing_key=self.result_queue_name,
+                            routing_key=self.queue_name,
                             body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
                             properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
                         )
-                        print(f"✨✨ [{self.can_bus}] 结果键值对已成功推入独立结果队列: [{self.result_queue_name}]")
+                        print(f"✨✨ [{self.can_bus}] 结果键值对已成功送回原始 MQ 队列中!")
                     except Exception as mq_err:
                         print(f"[{self.can_bus}] 发送结果到 RabbitMQ 失败: {mq_err}")
 
