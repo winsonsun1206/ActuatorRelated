@@ -18,20 +18,22 @@ class Can1ConnectivityService:
         self.can_bus = "can1"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
+        # 接收任务的队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can1".strip()
+        # 回传结果的独立队列（供网页端 Live Task Monitor 读取）
+        self.result_queue_name = f"canconnect_result_queue_{self.station_name}_can1".strip()
+        
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
         
-        # 🌟 修复核心：创建两个独立的连接，一个专门收，一个专门发
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.channel = self.connection.channel()
         self.channel.queue_declare(queue=self.queue_name, durable=True)
         
-        # 🌟 专属发送连接与通道
         self.send_connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.send_channel = self.send_connection.channel()
-        self.send_channel.queue_declare(queue=self.queue_name, durable=True)
+        self.send_channel.queue_declare(queue=self.result_queue_name, durable=True)
         
         self.redis_handler = RedisHandler(host=server_ip, port=6379, db=0)
         self.task_queue = queue.Queue()
@@ -45,7 +47,6 @@ class Can1ConnectivityService:
 
     def callback(self, ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
-        print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页原始包裹 ========\n{body}")
         
         task = None
         try:
@@ -89,19 +90,31 @@ class Can1ConnectivityService:
                     except Exception:
                         pass
             
+            # 过滤结果队列的自发包
+            if task.get('task_name') == "" and task.get('operation') == "" and len(task) == 1:
+                return
+
+            print(f"\n======== [RAWMQ_PACK] {self.can_bus} 抓到网页原始包裹 ========\n{body}")
             beautiful_json = json.dumps(task, indent=4, ensure_ascii=False)
             print(f"----------------------------------------\n还原后的标准 JSON 字典键值对:\n{beautiful_json}\n==========================================")
             
-            task_name = str(task.get('task_name', task.get('operation', ''))).strip()
-            operation = str(task.get('operation', '')).strip()
-            if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
-                self.task_queue.put_nowait(task)
+            self.task_queue.put_nowait(task)
 
     def _update_live_monitor(self, target_key, log_message):
         try:
             self.redis_handler.redis_client.setex(target_key, 600, str(log_message))
         except Exception:
             pass
+
+    def _run_heartbeat_loop(self, target_ids, stop_event, task_id, redis_key):
+        from utils.send_data import send_heartbeat
+        print(f"🌟 [{self.can_bus}] 心跳线程已启动，正在持续维持有效电机 ID {target_ids} 的长连接...")
+        while not stop_event.is_set():
+            try:
+                send_heartbeat(self.can_bus, target_ids)
+                time.sleep(1.0)
+            except Exception:
+                time.sleep(1.0)
 
     def _stop_existing_heartbeat(self):
         if self.heartbeat_event is not None:
@@ -110,6 +123,7 @@ class Can1ConnectivityService:
                 self.heartbeat_thread.join(timeout=2.0)
             self.heartbeat_event = None
             self.heartbeat_thread = None
+            print(f"🔒 [{self.can_bus}] 历史心跳守护线程已安全释放。")
 
     def process_tasks(self):
         while True:
@@ -118,118 +132,131 @@ class Can1ConnectivityService:
                 if task is None:
                     continue
 
+                task_name = str(task.get('task_name', task.get('operation', ''))).strip()
+                operation = str(task.get('operation', '')).strip()
+                
                 task_id = task.get('task_id') or task.get('id') or task.get('job_id') or f"{self.station_name}_{self.can_bus}_check_task"
                 task_id = str(task_id).strip()
                 redis_key = f"{self.station_name}_{self.can_bus}_check_result".strip()
 
-                self._stop_existing_heartbeat()
-                
-                test_slots = task.get('parameters', [])
-                if isinstance(test_slots, dict):
-                    test_slots = list(test_slots.values())
-                    
-                expected_ids = []
-                if isinstance(test_slots, list):
-                    for slot in test_slots:
-                        if not isinstance(slot, dict) and hasattr(slot, '__dict__'):
-                            slot = slot.__dict__
-                            
-                        if isinstance(slot, dict):
-                            sn_val = str(slot.get('serial_number', '')).strip()
-                            target_id_val = slot.get('can_msg_id') or slot.get('can_bus_id')
-                            
-                            if sn_val != "" and target_id_val is not None:
-                                try:
-                                    expected_ids.append(int(target_id_val))
-                                except (ValueError, TypeError):
-                                    pass
+                # 如果收到完成或重置包，停掉心跳
+                if 'complete' in task_name or 'complete' in operation:
+                    self._stop_existing_heartbeat()
+                    self.redis_handler.set_value(redis_key, {"status": "idle", "message": "等待检测"})
+                    continue
 
-                if not expected_ids:
-                    fallback_id = task.get('can_msg_id') or task.get('can_bus_id')
-                    if fallback_id is not None:
+                # 执行 checkcan 核心检测逻辑
+                if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
+                    self._stop_existing_heartbeat()
+                    
+                    test_slots = task.get('parameters', [])
+                    if isinstance(test_slots, dict):
+                        test_slots = list(test_slots.values())
+                        
+                    expected_ids = []
+                    if isinstance(test_slots, list):
+                        for slot in test_slots:
+                            if not isinstance(slot, dict) and hasattr(slot, '__dict__'):
+                                slot = slot.__dict__
+                                
+                            if isinstance(slot, dict):
+                                sn_val = str(slot.get('serial_number', '')).strip()
+                                target_id_val = slot.get('can_msg_id') or slot.get('can_bus_id')
+                                
+                                # 填了编码才检测
+                                if sn_val != "" and target_id_val is not None:
+                                    try:
+                                        expected_ids.append(int(target_id_val))
+                                    except (ValueError, TypeError):
+                                        pass
+
+                    if not expected_ids:
+                        fallback_id = task.get('can_msg_id') or task.get('can_bus_id')
+                        if fallback_id is not None:
+                            try:
+                                expected_ids.append(int(fallback_id))
+                            except Exception:
+                                pass
+
+                    if not expected_ids:
+                        result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
                         try:
-                            expected_ids.append(int(fallback_id))
+                            self.send_channel.basic_publish(
+                                exchange='', routing_key=self.result_queue_name,
+                                body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
+                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
+                            )
                         except Exception:
                             pass
+                        continue
 
-                if not expected_ids:
-                    result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
+                    try:
+                        can_bus_interface = can.interface.Bus(channel=self.can_bus, interface='socketcan', receive_timeout=0.1)
+                    except Exception as e:
+                        result_sentence = f"物理接口 [{self.can_bus}] 开启失败: {str(e)}"
+                        try:
+                            self.send_channel.basic_publish(
+                                exchange='', routing_key=self.result_queue_name,
+                                body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
+                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
+                        )
+                        except Exception:
+                            pass
+                        continue
+
+                    found_devices = set()
+                    start_time = time.time()
+                    
+                    while time.time() - start_time < 5.0:
+                        msg = can_bus_interface.recv(timeout=0.1)
+                        if msg is None:
+                            time.sleep(0.001)
+                            continue
+                        if msg.arbitration_id in range(256, 512):
+                            can_bus_id = msg.arbitration_id - 256
+                            if can_bus_id in expected_ids:
+                                found_devices.add(can_bus_id)
+                        if all(idx in found_devices for idx in expected_ids):
+                            break
+                        time.sleep(0.001)
+                    
+                    can_bus_interface.shutdown()
+                    
+                    missing_ids = [idx for idx in expected_ids if idx not in found_devices]
+
+                    # 判定并组装特定一句话结果
+                    if not missing_ids:
+                        result_sentence = "所有电机均已检测到，请继续下一步！"
+                        status_redis = "success"
+                        
+                        # 🌟 核心点：全通之后，启动心跳发送守护线程，防休眠！
+                        stop_event = threading.Event()
+                        hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event, task_id, redis_key))
+                        hb_thread.daemon = True
+                        hb_thread.start()
+                        self.heartbeat_event = stop_event
+                        self.heartbeat_thread = hb_thread
+                    else:
+                        missing_str = ", ".join(map(str, missing_ids))
+                        result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
+                        status_redis = "missing"
+
+                    # 回发特定格式键值对给网页端 Live Task Monitor
                     result_payload = {task_id: result_sentence}
                     try:
-                        # 🌟 使用独立的发送通道
                         self.send_channel.basic_publish(
                             exchange='',
-                            routing_key=self.queue_name,
+                            routing_key=self.result_queue_name,
                             body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
                             properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
                         )
-                    except Exception:
-                        pass
-                    continue
+                        print(f"✨✨ [{self.can_bus}] 结果键值对已成功推入独立结果队列: [{self.result_queue_name}]")
+                    except Exception as mq_err:
+                        print(f"[{self.can_bus}] 发送结果到 RabbitMQ 失败: {mq_err}")
 
-                try:
-                    can_bus_interface = can.interface.Bus(channel=self.can_bus, interface='socketcan', receive_timeout=0.1)
-                except Exception as e:
-                    result_sentence = f"物理接口 [{self.can_bus}] 开启失败: {str(e)}"
-                    try:
-                        self.send_channel.basic_publish(
-                            exchange='',
-                            routing_key=self.queue_name,
-                            body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
-                            properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
-                        )
-                    except Exception:
-                        pass
-                    continue
-
-                found_devices = set()
-                start_time = time.time()
-                
-                while time.time() - start_time < 5.0:
-                    msg = can_bus_interface.recv(timeout=0.1)
-                    if msg is None:
-                        time.sleep(0.001)
-                        continue
-                    if msg.arbitration_id in range(256, 512):
-                        can_bus_id = msg.arbitration_id - 256
-                        if can_bus_id in expected_ids:
-                            found_devices.add(can_bus_id)
-                    if all(idx in found_devices for idx in expected_ids):
-                        break
-                    time.sleep(0.001)
-                
-                can_bus_interface.shutdown()
-                
-                missing_ids = [idx for idx in expected_ids if idx not in found_devices]
-
-                if not missing_ids:
-                    result_sentence = "所有电机均已检测到，请继续下一步！"
-                    status_redis = "success"
-                else:
-                    missing_str = ", ".join(map(str, missing_ids))
-                    result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
-                    status_redis = "missing"
-
-                result_payload = {task_id: result_sentence}
-                
-                try:
-                    # 🌟 核心：使用独立的发送通道发布，绝不影响消费通道
-                    self.send_channel.basic_publish(
-                        exchange='',
-                        routing_key=self.queue_name,
-                        body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
-                        properties=pika.BasicProperties(
-                            content_type='application/json',
-                            delivery_mode=2
-                        )
-                    )
-                    print(f"✨✨ [{self.can_bus}] 物理检测完成，结果键值对已成功发往 MQ 队列!")
-                except Exception as mq_err:
-                    print(f"[{self.can_bus}] 发送结果键值对到 RabbitMQ 失败: {mq_err}")
-
-                self.redis_handler.set_value(redis_key, {"status": status_redis, "message": result_sentence})
-                self._update_live_monitor(task_id, result_sentence)
-                self._update_live_monitor(redis_key, result_sentence)
+                    self.redis_handler.set_value(redis_key, {"status": status_redis, "message": result_sentence})
+                    self._update_live_monitor(task_id, result_sentence)
+                    self._update_live_monitor(redis_key, result_sentence)
 
             except queue.Empty:
                 time.sleep(0.01)
