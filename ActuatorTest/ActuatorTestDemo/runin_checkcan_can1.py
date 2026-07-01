@@ -17,7 +17,7 @@ class Can1ConnectivityService:
         self.can_bus = "can1"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 🌟 回归最纯净、完全不受 pickle 二进制干扰的专属检测队列
+        # 统一绑定专属检测队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can1".strip()
         
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
@@ -39,14 +39,19 @@ class Can1ConnectivityService:
     def callback(self, ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
         print(f"\n======== [RAWMQ_PACK] can1 抓到网页包裹 ========\n{body}\n==========================================")
+        
+        task = None
         try:
+            task = json.loads(body.decode('utf-8'))
+        except Exception:
             try:
-                task = json.loads(body.decode('utf-8'))
-            except Exception:
                 task = pickle.loads(body)
+            except Exception as e:
+                print(f"[{self.can_bus}] 二进制及文本反序列化皆失败: {e}")
+                return
+                
+        if task is not None:
             self.task_queue.put_nowait(task)
-        except Exception as e:
-            print(f"[{self.can_bus}] 解析 RabbitMQ 包裹失败: {e}")
 
     def _update_live_monitor(self, target_key, log_message):
         try:
@@ -86,17 +91,22 @@ class Can1ConnectivityService:
                 if not isinstance(task, dict):
                     if hasattr(task, '__dict__'):
                         task = task.__dict__
+                    elif hasattr(task, 'get'):
+                        pass
                     else:
-                        continue
+                        try:
+                            task = dict(task)
+                        except Exception:
+                            continue
 
-                task_name = str(task.get('task_name', '')).strip()
+                task_name = str(task.get('task_name', task.get('operation', ''))).strip()
                 operation = str(task.get('operation', '')).strip()
                 
                 task_id = task.get('task_id') or task.get('id') or task.get('job_id') or f"{self.station_name}_{self.can_bus}_check_task"
                 task_id = str(task_id).strip()
                 redis_key = f"{self.station_name}_{self.can_bus}_check_result".strip()
 
-                if 'check' in task_name or 'check' in operation or 'connect' in task_name:
+                if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
                     self._stop_existing_heartbeat()
                     
                     init_msg = f"正在自动高频扫描物理 {self.can_bus} 通道上的电机连接响应..."
@@ -108,12 +118,18 @@ class Can1ConnectivityService:
                         test_slots = list(test_slots.values())
                         
                     expected_ids = []
-                    for slot in test_slots:
-                        if isinstance(slot, dict) and str(slot.get('serial_number', '')).strip() != "":
-                            try:
-                                expected_ids.append(int(slot['can_msg_id']))
-                            except (KeyError, ValueError):
-                                pass
+                    if isinstance(test_slots, list):
+                        for slot in test_slots:
+                            if isinstance(slot, dict) and str(slot.get('serial_number', '')).strip() != "":
+                                try:
+                                    expected_ids.append(int(slot['can_msg_id']))
+                                except (KeyError, ValueError):
+                                    pass
+                            elif hasattr(slot, 'can_msg_id') and getattr(slot, 'serial_number', '') != "":
+                                try:
+                                    expected_ids.append(int(slot.can_msg_id))
+                                except (ValueError, TypeError):
+                                    pass
 
                     if not expected_ids:
                         err_txt = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"

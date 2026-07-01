@@ -17,7 +17,7 @@ class Can0ConnectivityService:
         self.can_bus = "can0"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 🌟 回归最纯净、完全不受 pickle 二进制干扰的专属检测队列
+        # 统一绑定专属检测队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can0".strip()
         
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
@@ -39,14 +39,20 @@ class Can0ConnectivityService:
     def callback(self, ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
         print(f"\n======== [RAWMQ_PACK] can0 抓到网页包裹 ========\n{body}\n==========================================")
+        
+        task = None
+        # 🌟 核心兼容改进：自动识别解密标准 JSON 文本与原厂二进制 Pickle 字节流
         try:
+            task = json.loads(body.decode('utf-8'))
+        except Exception:
             try:
-                task = json.loads(body.decode('utf-8'))
-            except Exception:
                 task = pickle.loads(body)
+            except Exception as e:
+                print(f"[{self.can_bus}] 二进制及文本反序列化皆失败: {e}")
+                return
+                
+        if task is not None:
             self.task_queue.put_nowait(task)
-        except Exception as e:
-            print(f"[{self.can_bus}] 解析 RabbitMQ 包裹失败: {e}")
 
     def _update_live_monitor(self, target_key, log_message):
         try:
@@ -83,38 +89,54 @@ class Can0ConnectivityService:
                 if task is None:
                     continue
                 
-                # 兼容处理可能出现的对象类型
+                # 🌟 强行将还原出来的 Python 类对象、实例反射并强制拆解转化为标准的 Dict 字典
                 if not isinstance(task, dict):
                     if hasattr(task, '__dict__'):
                         task = task.__dict__
+                    elif hasattr(task, 'get'):
+                        pass
                     else:
-                        continue
+                        # 兼容某些打包成复杂结构的元组或命名属性
+                        try:
+                            task = dict(task)
+                        except Exception:
+                            continue
 
-                task_name = str(task.get('task_name', '')).strip()
+                # 提取状态字段与操作字段
+                task_name = str(task.get('task_name', task.get('operation', ''))).strip()
                 operation = str(task.get('operation', '')).strip()
                 
+                # 饱和式提取各种可能的 UUID 命名规范
                 task_id = task.get('task_id') or task.get('id') or task.get('job_id') or f"{self.station_name}_{self.can_bus}_check_task"
                 task_id = str(task_id).strip()
                 redis_key = f"{self.station_name}_{self.can_bus}_check_result".strip()
 
-                if 'check' in task_name or 'check' in operation or 'connect' in task_name:
+                # 精准模糊匹配任何含有 check 或者 runin 测试前置的包名
+                if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
                     self._stop_existing_heartbeat()
                     
                     init_msg = f"正在自动高频扫描物理 {self.can_bus} 通道上的电机连接响应..."
                     self._update_live_monitor(task_id, init_msg)
                     self._update_live_monitor(redis_key, init_msg)
                     
+                    # 动态兼容列表形式、元组形式或参数字典形式传入的槽位配置
                     test_slots = task.get('parameters', [])
                     if isinstance(test_slots, dict):
                         test_slots = list(test_slots.values())
                         
                     expected_ids = []
-                    for slot in test_slots:
-                        if isinstance(slot, dict) and str(slot.get('serial_number', '')).strip() != "":
-                            try:
-                                expected_ids.append(int(slot['can_msg_id']))
-                            except (KeyError, ValueError):
-                                pass
+                    if isinstance(test_slots, list):
+                        for slot in test_slots:
+                            if isinstance(slot, dict) and str(slot.get('serial_number', '')).strip() != "":
+                                try:
+                                    expected_ids.append(int(slot['can_msg_id']))
+                                except (KeyError, ValueError):
+                                    pass
+                            elif hasattr(slot, 'can_msg_id') and getattr(slot, 'serial_number', '') != "":
+                                try:
+                                    expected_ids.append(int(slot.can_msg_id))
+                                except (ValueError, TypeError):
+                                    pass
 
                     if not expected_ids:
                         err_txt = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
@@ -138,7 +160,7 @@ class Can0ConnectivityService:
                     while time.time() - start_time < 5.0:
                         msg = can_bus_interface.recv(timeout=0.1)
                         if msg is None:
-                            time.sleep(0.001)
+                            time.sleep(0.001)  # 降能让步
                             continue
                         
                         if msg.arbitration_id in range(256, 512):
