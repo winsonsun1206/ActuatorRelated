@@ -9,6 +9,7 @@ import can
 import queue
 import threading
 import re
+import pickle  # 🌟 恢复引入原厂核心 Pickle 库
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 
@@ -17,9 +18,9 @@ class Can1ConnectivityService:
         self.can_bus = "can1"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 🌟 统一向工程师制定的这一个原始队列发送结果包
+        # 统一向工程师制定的这一个原始队列发送结果包
         self.queue_name = f"canconnect_queue_{self.station_name}_can1".strip()
-        # 🌟 工程师新定义的 Redis 任务接收 Key
+        # 工程师新定义的 Redis 任务接收 Key
         self.redis_task_key = f"{self.station_name}_{self.can_bus}_task_input".strip()
 
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
@@ -45,7 +46,6 @@ class Can1ConnectivityService:
         try:
             self.redis_handler.redis_client.setex(target_key, 600, str(log_message))
         except Exception as e:
-            # 🌟 核心改进：向 Redis 写入网页终端状态失败时报错
             print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 写入 Live Monitor 失败: {e}\033[0m")
 
     def _run_heartbeat_loop(self, target_ids, stop_event, task_id, redis_key):
@@ -122,11 +122,13 @@ class Can1ConnectivityService:
 
                     if not expected_ids:
                         result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
+                        result_payload = {task_id: result_sentence}
                         try:
+                            # 🌟 核心同步：使用原厂 pickle 序列化发送给原始 MQ
+                            pickle_body = pickle.dumps(result_payload)
                             self.send_channel.basic_publish(
-                                exchange='', routing_key=self.queue_name,
-                                body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
-                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
+                                exchange='', routing_key=self.queue_name, body=pickle_body,
+                                properties=pika.BasicProperties(content_type='application/octet-stream', delivery_mode=2)
                             )
                         except Exception:
                             pass
@@ -136,12 +138,13 @@ class Can1ConnectivityService:
                         can_bus_interface = can.interface.Bus(channel=self.can_bus, interface='socketcan', receive_timeout=0.1)
                     except Exception as e:
                         result_sentence = f"物理接口 [{self.can_bus}] 开启失败: {str(e)}"
+                        result_payload = {task_id: result_sentence}
                         try:
+                            pickle_body = pickle.dumps(result_payload)
                             self.send_channel.basic_publish(
-                                exchange='', routing_key=self.queue_name,
-                                body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
-                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
-                        )
+                                exchange='', routing_key=self.queue_name, body=pickle_body,
+                                properties=pika.BasicProperties(content_type='application/octet-stream', delivery_mode=2)
+                            )
                         except Exception:
                             pass
                         continue
@@ -183,13 +186,18 @@ class Can1ConnectivityService:
 
                     result_payload = {task_id: result_sentence}
                     try:
+                        # 🌟 核心同步：使用原厂标准 pickle.dumps 字节流打包返回，确保原始管道完美解码
+                        pickle_body = pickle.dumps(result_payload)
                         self.send_channel.basic_publish(
                             exchange='',
                             routing_key=self.queue_name,
-                            body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
-                            properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
+                            body=pickle_body,
+                            properties=pika.BasicProperties(
+                                content_type='application/octet-stream',
+                                delivery_mode=2
+                            )
                         )
-                        print(f"✨✨ [{self.can_bus}] 结果已推送至原始 MQ 队列, 且树莓派不占用此通道，Ready 成功置 1!")
+                        print(f"✨✨ [{self.can_bus}] 结果已依照原厂 Pickle 协议格式推入原始 MQ 队列！")
                     except Exception as mq_err:
                         print(f"[{self.can_bus}] 发送结果到 RabbitMQ 失败: {mq_err}")
 
@@ -208,26 +216,27 @@ class Can1ConnectivityService:
         print(f"成功挂起专属独立检测服务。正在实时轮询 Redis 任务指令 Key: [{self.redis_task_key}]...")
         while True:
             try:
-                # 从 Redis 提取网页端塞入的任务数据
                 raw_data = self.redis_handler.redis_client.get(self.redis_task_key)
                 if raw_data:
                     try:
-                        # 🌟 核心改进：提取成功后立刻尝试清空 Redis 标识
                         self.redis_handler.redis_client.delete(self.redis_task_key)
                     except Exception as del_err:
-                        print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 清空消费标记失败 (任务可能重复消费): {del_err}\033[0m")
+                        print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 清空消费标记失败: {del_err}\033[0m")
                     
+                    task = None
+                    # 🌟 优先采用原厂 Pickle 协议序列化对齐解码
                     try:
-                        task = json.loads(raw_data.decode('utf-8') if isinstance(raw_data, bytes) else raw_data)
-                    except Exception:
-                        import pickle
                         task = pickle.loads(raw_data)
+                    except Exception:
+                        try:
+                            task = json.loads(raw_data.decode('utf-8') if isinstance(raw_data, bytes) else raw_data)
+                        except Exception as p_err:
+                            print(f"\033[1;31m❌ 数据反序列化失败，既不是原厂有效 Pickle 也不是通用 JSON\033[0m")
                         
                     if task:
                         self.task_queue.put_nowait(task)
             except Exception as e:
-                # 🌟 核心改进：Redis 网络异常断联、读取失败直接爆红高亮提示
-                print(f"\033[1;31m❌ [REDIS_CRITICAL_ERROR] [{self.can_bus}] 无法从服务器 192.168.2.47 读取数据，请检查网线连接: {e}\033[0m")
+                print(f"\033[1;31m❌ [REDIS_CRITICAL_ERROR] [{self.can_bus}] 无法从服务器 192.168.2.47 读取数据: {e}\033[0m")
             time.sleep(0.5)
 
 if __name__ == "__main__":
