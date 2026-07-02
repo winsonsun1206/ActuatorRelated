@@ -9,7 +9,7 @@ import can
 import queue
 import threading
 import re
-import pickle  # 🌟 恢复引入原厂核心 Pickle 库
+import pickle
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 
@@ -18,14 +18,11 @@ class Can1ConnectivityService:
         self.can_bus = "can1"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
-        # 统一向工程师制定的这一个原始队列发送结果包
         self.queue_name = f"canconnect_queue_{self.station_name}_can1".strip()
-        # 工程师新定义的 Redis 任务接收 Key
         self.redis_task_key = f"{self.station_name}_{self.can_bus}_task_input".strip()
 
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
         
-        # 建立专属发送连接与通道
         self.send_connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
         self.send_channel = self.send_connection.channel()
@@ -34,7 +31,6 @@ class Can1ConnectivityService:
         self.redis_handler = RedisHandler(host=server_ip, port=6379, db=0)
         self.task_queue = queue.Queue()
         
-        # 启动常驻任务处理线程
         self.test_consumer_thread = threading.Thread(target=self.process_tasks)
         self.test_consumer_thread.daemon = True
         self.test_consumer_thread.start()
@@ -122,13 +118,12 @@ class Can1ConnectivityService:
 
                     if not expected_ids:
                         result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
-                        result_payload = {task_id: result_sentence}
                         try:
-                            # 🌟 核心同步：使用原厂 pickle 序列化发送给原始 MQ
-                            pickle_body = pickle.dumps(result_payload)
+                            # 🌟 强力固定：发往 MQ 必须使用前端能读懂的标准纯净 JSON 字符串，不用 pickle
                             self.send_channel.basic_publish(
-                                exchange='', routing_key=self.queue_name, body=pickle_body,
-                                properties=pika.BasicProperties(content_type='application/octet-stream', delivery_mode=2)
+                                exchange='', routing_key=self.queue_name,
+                                body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
+                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
                             )
                         except Exception:
                             pass
@@ -138,12 +133,11 @@ class Can1ConnectivityService:
                         can_bus_interface = can.interface.Bus(channel=self.can_bus, interface='socketcan', receive_timeout=0.1)
                     except Exception as e:
                         result_sentence = f"物理接口 [{self.can_bus}] 开启失败: {str(e)}"
-                        result_payload = {task_id: result_sentence}
                         try:
-                            pickle_body = pickle.dumps(result_payload)
                             self.send_channel.basic_publish(
-                                exchange='', routing_key=self.queue_name, body=pickle_body,
-                                properties=pika.BasicProperties(content_type='application/octet-stream', delivery_mode=2)
+                                exchange='', routing_key=self.queue_name,
+                                body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
+                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
                             )
                         except Exception:
                             pass
@@ -186,18 +180,14 @@ class Can1ConnectivityService:
 
                     result_payload = {task_id: result_sentence}
                     try:
-                        # 🌟 核心同步：使用原厂标准 pickle.dumps 字节流打包返回，确保原始管道完美解码
-                        pickle_body = pickle.dumps(result_payload)
+                        # 🌟 强力固定：发往 MQ 必须使用标准纯净 JSON 字符串，前端 JS 才能直接解析！
                         self.send_channel.basic_publish(
                             exchange='',
                             routing_key=self.queue_name,
-                            body=pickle_body,
-                            properties=pika.BasicProperties(
-                                content_type='application/octet-stream',
-                                delivery_mode=2
-                            )
+                            body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
+                            properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
                         )
-                        print(f"✨✨ [{self.can_bus}] 结果已依照原厂 Pickle 协议格式推入原始 MQ 队列！")
+                        print(f"✨✨ [{self.can_bus}] 结果已以纯净前端 JSON 格式推送至原始 MQ 队列！")
                     except Exception as mq_err:
                         print(f"[{self.can_bus}] 发送结果到 RabbitMQ 失败: {mq_err}")
 
@@ -224,7 +214,6 @@ class Can1ConnectivityService:
                         print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 清空消费标记失败: {del_err}\033[0m")
                     
                     task = None
-                    # 🌟 优先采用原厂 Pickle 协议序列化对齐解码
                     try:
                         task = pickle.loads(raw_data)
                     except Exception:
