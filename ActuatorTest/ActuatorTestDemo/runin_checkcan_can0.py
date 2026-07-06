@@ -8,7 +8,6 @@ import time
 import can
 import queue
 import threading
-import re
 import pickle
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
@@ -73,14 +72,22 @@ class Can0ConnectivityService:
                 task_name = str(task.get('task_name', task.get('operation', ''))).strip()
                 operation = str(task.get('operation', '')).strip()
                 
+                # 获取任务专属唯一 UID / task_id
                 task_id = task.get('task_id') or task.get('id') or task.get('job_id') or f"{self.station_name}_{self.can_bus}_check_task"
                 task_id = str(task_id).strip()
-                redis_key = f"{self.station_name}_{self.can_bus}_check_result".strip()
+                
+                # 🌟 修改：将 redis_key 直接映射为 task_id
+                redis_key = task_id
 
+                # 🌟 收到 complete 指令：不删除，重置为 idle 并维持 2 小时生命期，格式统一为 {"taskid": "message"}
                 if 'complete' in task_name or 'complete' in operation:
                     self._stop_existing_heartbeat()
                     try:
-                        self.redis_handler.set_value(redis_key, {"status": "idle", "message": "等待检测"})
+                        self.redis_handler.set_value_with_expiry(
+                            key=redis_key, 
+                            value={task_id: "等待检测"}, 
+                            expiry_seconds=7200
+                        )
                     except Exception as e:
                         print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 重置任务状态到 Redis 失败: {e}\033[0m")
                     continue
@@ -118,8 +125,8 @@ class Can0ConnectivityService:
 
                     if not expected_ids:
                         result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
+                        
                         try:
-                            # 🌟 强力固定：发往 MQ 必须使用前端能读懂的标准纯净 JSON 字符串，不用 pickle
                             self.send_channel.basic_publish(
                                 exchange='', routing_key=self.queue_name,
                                 body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
@@ -127,6 +134,16 @@ class Can0ConnectivityService:
                             )
                         except Exception:
                             pass
+                        
+                        # 🌟 未输入序列号：存入 Redis 对应的 task_id，保存 2 小时，格式为 {"taskid": "message"}
+                        try:
+                            self.redis_handler.set_value_with_expiry(
+                                key=redis_key,
+                                value={task_id: result_sentence},
+                                expiry_seconds=7200
+                            )
+                        except Exception as e:
+                            print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 同步空任务状态到 Redis 失败: {e}\033[0m")
                         continue
 
                     try:
@@ -138,6 +155,16 @@ class Can0ConnectivityService:
                                 exchange='', routing_key=self.queue_name,
                                 body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
                                 properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
+                            )
+                        except Exception:
+                            pass
+                        
+                        # 🌟 物理接口失败：存入 Redis，保存 2 小时，格式为 {"taskid": "message"}
+                        try:
+                            self.redis_handler.set_value_with_expiry(
+                                key=redis_key,
+                                value={task_id: result_sentence},
+                                expiry_seconds=7200
                             )
                         except Exception:
                             pass
@@ -165,7 +192,6 @@ class Can0ConnectivityService:
 
                     if not missing_ids:
                         result_sentence = "所有电机均已检测到，请继续下一步！"
-                        status_redis = "success"
                         
                         stop_event = threading.Event()
                         hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event, task_id, redis_key))
@@ -176,11 +202,9 @@ class Can0ConnectivityService:
                     else:
                         missing_str = ", ".join(map(str, missing_ids))
                         result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
-                        status_redis = "missing"
 
                     result_payload = {task_id: result_sentence}
                     try:
-                        # 🌟 强力固定：发往 MQ 必须使用标准纯净 JSON 字符串，前端 JS 才能直接解析！
                         self.send_channel.basic_publish(
                             exchange='',
                             routing_key=self.queue_name,
@@ -191,12 +215,16 @@ class Can0ConnectivityService:
                     except Exception as mq_err:
                         print(f"[{self.can_bus}] 发送结果到 RabbitMQ 失败: {mq_err}")
 
+                    # 🌟 核心修改点：将检测完的结果存入特定 task_id 中，格式严格限定为 {"taskid": "message"}，并维持 2 小时有效。
                     try:
-                        self.redis_handler.set_value(redis_key, {"status": status_redis, "message": result_sentence})
+                        self.redis_handler.set_value_with_expiry(
+                            key=redis_key, 
+                            value={task_id: result_sentence}, 
+                            expiry_seconds=7200
+                        )
+                        print(f"✨ [{self.can_bus}] 键值对已同步至 Redis 键 [{redis_key}]，两小时后自动销毁。")
                     except Exception as e:
                         print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 同步最终结果到 Redis 失败: {e}\033[0m")
-                    self._update_live_monitor(task_id, result_sentence)
-                    self._update_live_monitor(redis_key, result_sentence)
 
             except queue.Empty:
                 time.sleep(0.01)
