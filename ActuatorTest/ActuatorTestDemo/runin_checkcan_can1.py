@@ -76,18 +76,19 @@ class Can1ConnectivityService:
                 task_id = task.get('task_id') or task.get('id') or task.get('job_id') or f"{self.station_name}_{self.can_bus}_check_task"
                 task_id = str(task_id).strip()
                 
-                # 🌟 修改：将 redis_key 直接映射为 task_id
+                # 将 redis_key 直接映射为 task_id 字符串
                 redis_key = task_id
 
-                # 🌟 收到 complete 指令：不删除，重置为 idle 并维持 2 小时生命期，格式统一为 {"taskid": "message"}
+                # 🌟 收到 complete 指令：重置为 "等待检测" 纯字符串，维持 2 小时生命期
                 if 'complete' in task_name or 'complete' in operation:
                     self._stop_existing_heartbeat()
                     try:
-                        self.redis_handler.set_value_with_expiry(
-                            key=redis_key, 
-                            value={task_id: "等待检测"}, 
-                            expiry_seconds=7200
+                        self.redis_handler.redis_client.setex(
+                            name=redis_key, 
+                            time=7200, 
+                            value="等待检测"
                         )
+                        print(f"✨ [{self.can_bus}] 状态已重置为纯文本 [等待检测]，键为: {redis_key}")
                     except Exception as e:
                         print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 重置任务状态到 Redis 失败: {e}\033[0m")
                     continue
@@ -135,12 +136,12 @@ class Can1ConnectivityService:
                         except Exception:
                             pass
                         
-                        # 🌟 未输入序列号：存入 Redis 对应的 task_id，保存 2 小时，格式为 {"taskid": "message"}
+                        # 🌟 未输入序列号：直接存入纯字符串，保存 2 小时
                         try:
-                            self.redis_handler.set_value_with_expiry(
-                                key=redis_key,
-                                value={task_id: result_sentence},
-                                expiry_seconds=7200
+                            self.redis_handler.redis_client.setex(
+                                name=redis_key,
+                                time=7200,
+                                value=str(result_sentence)
                             )
                         except Exception as e:
                             print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 同步空任务状态到 Redis 失败: {e}\033[0m")
@@ -159,12 +160,12 @@ class Can1ConnectivityService:
                         except Exception:
                             pass
                         
-                        # 🌟 物理接口失败：存入 Redis，保存 2 小时，格式为 {"taskid": "message"}
+                        # 🌟 物理接口失败：直接存入纯字符串结果，保存 2 小时
                         try:
-                            self.redis_handler.set_value_with_expiry(
-                                key=redis_key,
-                                value={task_id: result_sentence},
-                                expiry_seconds=7200
+                            self.redis_handler.redis_client.setex(
+                                name=redis_key,
+                                time=7200,
+                                value=str(result_sentence)
                             )
                         except Exception:
                             pass
@@ -211,18 +212,18 @@ class Can1ConnectivityService:
                             body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
                             properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
                         )
-                        print(f"✨✨ [{self.can_bus}] 结果已以纯净前端 JSON 格式推送至原始 MQ 队列！")
+                        print(f"✨✨ [{self.can_bus}] 结果已推送至 MQ 队列。")
                     except Exception as mq_err:
                         print(f"[{self.can_bus}] 发送结果到 RabbitMQ 失败: {mq_err}")
 
-                    # 🌟 核心修改点：将检测完的结果存入特定 task_id 中，格式严格限定为 {"taskid": "message"}，并维持 2 小时有效。
+                    # 🌟 核心修改点：强制采用原生 setex 存入纯文本字符串提示，并维持 2 小时有效寿命。
                     try:
-                        self.redis_handler.set_value_with_expiry(
-                            key=redis_key, 
-                            value={task_id: result_sentence}, 
-                            expiry_seconds=7200
+                        self.redis_handler.redis_client.setex(
+                            name=redis_key, 
+                            time=7200, 
+                            value=str(result_sentence)
                         )
-                        print(f"✨ [{self.can_bus}] 键值对已同步至 Redis 键 [{redis_key}]，两小时后自动销毁。")
+                        print(f"✨ [{self.can_bus}] 纯字符串值已写入 Redis 键 [{redis_key}]，两小时后自动销毁。")
                     except Exception as e:
                         print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 同步最终结果到 Redis 失败: {e}\033[0m")
 
