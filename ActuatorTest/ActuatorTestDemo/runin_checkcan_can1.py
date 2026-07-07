@@ -232,29 +232,36 @@ class Can1ConnectivityService:
                 continue
 
     def start_polling_redis(self):
-        print(f"成功挂起专属独立检测服务。正在实时轮询 Redis 任务指令 Key: [{self.redis_task_key}]...")
+        print(f"🚀 [纯净 JSON 架构已激活] 正在实时轮询 Redis 任务指令 Key: [{self.redis_task_key}]...")
         while True:
             try:
                 raw_data = self.redis_handler.redis_client.get(self.redis_task_key)
                 if raw_data:
+                    # 1. 拿到数据立刻删除指令，防止被重复消费
                     try:
                         self.redis_handler.redis_client.delete(self.redis_task_key)
                     except Exception as del_err:
-                        print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 清空消费标记失败: {del_err}\033[0m")
+                        print(f"❌ [REDIS_ERROR] [{self.can_bus}] 清空消费标记失败: {del_err}")
                     
-                    task = None
+                    # 2. 🌟 核心极致简化：只管使用 utf-8 解码并进行 json.loads
                     try:
-                        task = pickle.loads(raw_data)
-                    except Exception:
-                        try:
-                            task = json.loads(raw_data.decode('utf-8') if isinstance(raw_data, bytes) else raw_data)
-                        except Exception as p_err:
-                            print(f"\033[1;31m❌ 数据反序列化失败，既不是原厂有效 Pickle 也不是通用 JSON\033[0m")
+                        # 兼容字节流形式或纯文本形式的 JSON 串
+                        decoded_str = raw_data.decode('utf-8') if isinstance(raw_data, bytes) else str(raw_data)
+                        task = json.loads(decoded_str.strip())
                         
-                    if task:
-                        self.task_queue.put_nowait(task)
+                        # 3. 校验数据并安全送入内部队列
+                        if task and isinstance(task, dict):
+                            self.task_queue.put_nowait(task)
+                        else:
+                            print(f"⚠️ 解析成功但格式不是预期的标准字典(dict): {task}")
+                            
+                    except json.JSONDecodeError as json_err:
+                        print(f"❌ [数据格式错误] 收到非标准 JSON 字符串，无法正常解析。错误原因: {json_err}")
+                        print(f"🎦 坏包数据样本: {raw_data[:200]}")
+                        
             except Exception as e:
-                print(f"\033[1;31m❌ [REDIS_CRITICAL_ERROR] [{self.can_bus}] 无法从服务器 192.168.2.47 读取数据: {e}\033[0m")
+                print(f"❌ [REDIS_CRITICAL_ERROR] [{self.can_bus}] 轮询核心发生不可控异常: {e}")
+            
             time.sleep(0.5)
 
 if __name__ == "__main__":
