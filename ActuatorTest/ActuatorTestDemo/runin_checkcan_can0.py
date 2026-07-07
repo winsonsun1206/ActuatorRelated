@@ -8,7 +8,6 @@ import time
 import can
 import queue
 import threading
-import pickle
 from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 
@@ -17,33 +16,24 @@ class Can0ConnectivityService:
         self.can_bus = "can0"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
+        # 树莓派常驻监听的 RabbitMQ 任务下发队列
         self.queue_name = f"canconnect_queue_{self.station_name}_can0".strip()
-        self.redis_task_key = f"{self.station_name}_{self.can_bus}_task_input".strip()
 
+        # 配置 RabbitMQ 连接属性
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
-        
-        self.send_connection = pika.BlockingConnection(pika.ConnectionParameters(
+        self.mq_connection = pika.BlockingConnection(pika.ConnectionParameters(
             server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout=7201))
-        self.send_channel = self.send_connection.channel()
-        self.send_channel.queue_declare(queue=self.queue_name, durable=True)
+        self.mq_channel = self.mq_connection.channel()
+        self.mq_channel.queue_declare(queue=self.queue_name, durable=True)
         
+        # 初始化 Redis 结果处理器
         self.redis_handler = RedisHandler(host=server_ip, port=6379, db=0)
-        self.task_queue = queue.Queue()
         
-        self.test_consumer_thread = threading.Thread(target=self.process_tasks)
-        self.test_consumer_thread.daemon = True
-        self.test_consumer_thread.start()
-        
+        # 历史心跳守护控制线程锁
         self.heartbeat_event = None
         self.heartbeat_thread = None
 
-    def _update_live_monitor(self, target_key, log_message):
-        try:
-            self.redis_handler.redis_client.setex(target_key, 600, str(log_message))
-        except Exception as e:
-            print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 写入 Live Monitor 失败: {e}\033[0m")
-
-    def _run_heartbeat_loop(self, target_ids, stop_event, task_id, redis_key):
+    def _run_heartbeat_loop(self, target_ids, stop_event):
         from utils.send_data import send_heartbeat
         print(f"🌟 [{self.can_bus}] 心跳线程已启动，持续维持有效电机 ID {target_ids} 的长连接防止休眠...")
         while not stop_event.is_set():
@@ -62,208 +52,172 @@ class Can0ConnectivityService:
             self.heartbeat_thread = None
             print(f"🔒 [{self.can_bus}] 历史心跳守护线程已安全释放。")
 
-    def process_tasks(self):
-        while True:
-            try:
-                task = self.task_queue.get_nowait()
-                if task is None:
-                    continue
+    def process_tasks_callback(self, ch, method, properties, body):
+        """🌟 核心改造：RabbitMQ 消费者回调函数，替代原先的 Redis 轮询"""
+        try:
+            if not body:
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                return
 
-                task_name = str(task.get('task_name', task.get('operation', ''))).strip()
-                operation = str(task.get('operation', '')).strip()
-                
-                # 获取任务专属唯一 UID / task_id
-                task_id = task.get('task_id') or task.get('id') or task.get('job_id') or f"{self.station_name}_{self.can_bus}_check_task"
-                task_id = str(task_id).strip()
-                
-                # 将 redis_key 直接映射为 task_id 字符串
-                redis_key = task_id
-
-                # 🌟 收到 complete 指令：重置为 "等待检测" 纯字符串，维持 2 小时生命期
-                if 'complete' in task_name or 'complete' in operation:
-                    self._stop_existing_heartbeat()
-                    try:
-                        self.redis_handler.redis_client.setex(
-                            name=redis_key, 
-                            time=7200, 
-                            value="等待检测"
-                        )
-                        print(f"✨ [{self.can_bus}] 状态已重置为纯文本 [等待检测]，键为: {redis_key}")
-                    except Exception as e:
-                        print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 重置任务状态到 Redis 失败: {e}\033[0m")
-                    continue
-
-                if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
-                    self._stop_existing_heartbeat()
-                    
-                    test_slots = task.get('parameters', [])
-                    if isinstance(test_slots, dict):
-                        test_slots = list(test_slots.values())
-                        
-                    expected_ids = []
-                    if isinstance(test_slots, list):
-                        for slot in test_slots:
-                            if not isinstance(slot, dict) and hasattr(slot, '__dict__'):
-                                slot = slot.__dict__
-                                
-                            if isinstance(slot, dict):
-                                sn_val = str(slot.get('serial_number', '')).strip()
-                                target_id_val = slot.get('can_msg_id') or slot.get('can_bus_id')
-                                
-                                if sn_val != "" and target_id_val is not None:
-                                    try:
-                                        expected_ids.append(int(target_id_val))
-                                    except (ValueError, TypeError):
-                                        pass
-
-                    if not expected_ids:
-                        fallback_id = task.get('can_msg_id') or task.get('can_bus_id')
-                        if fallback_id is not None:
-                            try:
-                                expected_ids.append(int(fallback_id))
-                            except Exception:
-                                pass
-
-                    if not expected_ids:
-                        result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
-                        
-                        try:
-                            self.send_channel.basic_publish(
-                                exchange='', routing_key=self.queue_name,
-                                body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
-                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
-                            )
-                        except Exception:
-                            pass
-                        
-                        # 🌟 未输入序列号：直接存入纯字符串，保存 2 小时
-                        try:
-                            self.redis_handler.redis_client.setex(
-                                name=redis_key,
-                                time=7200,
-                                value=str(result_sentence)
-                            )
-                        except Exception as e:
-                            print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 同步空任务状态到 Redis 失败: {e}\033[0m")
-                        continue
-
-                    try:
-                        can_bus_interface = can.interface.Bus(channel=self.can_bus, interface='socketcan', receive_timeout=0.1)
-                    except Exception as e:
-                        result_sentence = f"物理接口 [{self.can_bus}] 开启失败: {str(e)}"
-                        try:
-                            self.send_channel.basic_publish(
-                                exchange='', routing_key=self.queue_name,
-                                body=json.dumps({task_id: result_sentence}, ensure_ascii=False).encode('utf-8'),
-                                properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
-                            )
-                        except Exception:
-                            pass
-                        
-                        # 🌟 物理接口失败：直接存入纯字符串结果，保存 2 小时
-                        try:
-                            self.redis_handler.redis_client.setex(
-                                name=redis_key,
-                                time=7200,
-                                value=str(result_sentence)
-                            )
-                        except Exception:
-                            pass
-                        continue
-
-                    found_devices = set()
-                    start_time = time.time()
-                    
-                    while time.time() - start_time < 5.0:
-                        msg = can_bus_interface.recv(timeout=0.1)
-                        if msg is None:
-                            time.sleep(0.001)
-                            continue
-                        if msg.arbitration_id in range(256, 512):
-                            can_bus_id = msg.arbitration_id - 256
-                            if can_bus_id in expected_ids:
-                                found_devices.add(can_bus_id)
-                        if all(idx in found_devices for idx in expected_ids):
-                            break
-                        time.sleep(0.001)
-                    
-                    can_bus_interface.shutdown()
-                    
-                    missing_ids = [idx for idx in expected_ids if idx not in found_devices]
-
-                    if not missing_ids:
-                        result_sentence = "所有电机均已检测到，请继续下一步！"
-                        
-                        stop_event = threading.Event()
-                        hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event, task_id, redis_key))
-                        hb_thread.daemon = True
-                        hb_thread.start()
-                        self.heartbeat_event = stop_event
-                        self.heartbeat_thread = hb_thread
-                    else:
-                        missing_str = ", ".join(map(str, missing_ids))
-                        result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
-
-                    result_payload = {task_id: result_sentence}
-                    try:
-                        self.send_channel.basic_publish(
-                            exchange='',
-                            routing_key=self.queue_name,
-                            body=json.dumps(result_payload, ensure_ascii=False).encode('utf-8'),
-                            properties=pika.BasicProperties(content_type='application/json', delivery_mode=2)
-                        )
-                        print(f"✨✨ [{self.can_bus}] 结果已推送至 MQ 队列。")
-                    except Exception as mq_err:
-                        print(f"[{self.can_bus}] 发送结果到 RabbitMQ 失败: {mq_err}")
-
-                    # 🌟 核心修改点：强制采用原生 setex 存入纯文本字符串提示，并维持 2 小时有效寿命。
-                    try:
-                        self.redis_handler.redis_client.setex(
-                            name=redis_key, 
-                            time=7200, 
-                            value=str(result_sentence)
-                        )
-                        print(f"✨ [{self.can_bus}] 纯字符串值已写入 Redis 键 [{redis_key}]，两小时后自动销毁。")
-                    except Exception as e:
-                        print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 同步最终结果到 Redis 失败: {e}\033[0m")
-
-            except queue.Empty:
-                time.sleep(0.01)
-                continue
-
-    def start_polling_redis(self):
-        print(f"🚀 [纯净 JSON 架构已激活] 正在实时轮询 Redis 任务指令 Key: [{self.redis_task_key}]...")
-        while True:
-            try:
-                raw_data = self.redis_handler.redis_client.get(self.redis_task_key)
-                if raw_data:
-                    # 1. 拿到数据立刻删除指令，防止被重复消费
-                    try:
-                        self.redis_handler.redis_client.delete(self.redis_task_key)
-                    except Exception as del_err:
-                        print(f"❌ [REDIS_ERROR] [{self.can_bus}] 清空消费标记失败: {del_err}")
-                    
-                    # 2. 🌟 核心极致简化：只管使用 utf-8 解码并进行 json.loads
-                    try:
-                        # 兼容字节流形式或纯文本形式的 JSON 串
-                        decoded_str = raw_data.decode('utf-8') if isinstance(raw_data, bytes) else str(raw_data)
-                        task = json.loads(decoded_str.strip())
-                        
-                        # 3. 校验数据并安全送入内部队列
-                        if task and isinstance(task, dict):
-                            self.task_queue.put_nowait(task)
-                        else:
-                            print(f"⚠️ 解析成功但格式不是预期的标准字典(dict): {task}")
-                            
-                    except json.JSONDecodeError as json_err:
-                        print(f"❌ [数据格式错误] 收到非标准 JSON 字符串，无法正常解析。错误原因: {json_err}")
-                        print(f"🎦 坏包数据样本: {raw_data[:200]}")
-                        
-            except Exception as e:
-                print(f"❌ [REDIS_CRITICAL_ERROR] [{self.can_bus}] 轮询核心发生不可控异常: {e}")
+            # 1. 兼容性解析从 RabbitMQ 队列拿到的任务包
+            decoded_str = body.decode('utf-8') if isinstance(body, bytes) else str(body)
+            task = json.loads(decoded_str.strip())
             
-            time.sleep(0.5)
+            if not isinstance(task, dict):
+                print(f"⚠️ [{self.can_bus}] 从 MQ 拿到的数据不是有效的 JSON 字典对象。")
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                return
+
+            task_name = str(task.get('task_name', task.get('operation', ''))).strip()
+            operation = str(task.get('operation', '')).strip()
+            
+            # 提取专属唯一 UID / task_id
+            task_id = task.get('task_id') or task.get('id') or task.get('job_id') or f"{self.station_name}_{self.can_bus}_check_task"
+            task_id = str(task_id).strip()
+            redis_key = task_id
+
+            # 2. 收到 complete 重置指令：将结果写入 Redis，保存 2 小时
+            if 'complete' in task_name or 'complete' in operation:
+                self._stop_existing_heartbeat()
+                try:
+                    self.redis_handler.redis_client.setex(name=redis_key, time=7200, value="等待检测")
+                    print(f"✨ [{self.can_bus}] 收到完结指令，Redis 键 [{redis_key}] 已拨回 -> [等待检测]")
+                except Exception as e:
+                    print(f"❌ [REDIS_ERROR] [{self.can_bus}] 重置状态失败: {e}")
+                
+                # 确认消费，通知 MQ 销毁此任务
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                return
+
+            # 3. 收到实际检测或校验指令
+            if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
+                self._stop_existing_heartbeat()
+                print(f"📥 [{self.can_bus}] 成功捕获 MQ 指令，开始进行物理 CAN 硬件对比。Task ID: {task_id}")
+                
+                test_slots = task.get('parameters', [])
+                if isinstance(test_slots, dict):
+                    test_slots = list(test_slots.values())
+                    
+                expected_ids = []
+                if isinstance(test_slots, list):
+                    for slot in test_slots:
+                        if not isinstance(slot, dict) and hasattr(slot, '__dict__'):
+                            slot = slot.__dict__
+                            
+                        if isinstance(slot, dict):
+                            sn_val = str(slot.get('serial_number', '')).strip()
+                            target_id_val = slot.get('can_msg_id') or slot.get('can_bus_id')
+                            
+                            if sn_val != "" and target_id_val is not None:
+                                try:
+                                    expected_ids.append(int(target_id_val))
+                                except (ValueError, TypeError):
+                                    pass
+
+                if not expected_ids:
+                    fallback_id = task.get('can_msg_id') or task.get('can_bus_id')
+                    if fallback_id is not None:
+                        try:
+                            expected_ids.append(int(fallback_id))
+                        except Exception:
+                            pass
+
+                # 校验：如果完全没有输入序列号
+                if not expected_ids:
+                    result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
+                    try:
+                        self.redis_handler.redis_client.setex(name=redis_key, time=7200, value=str(result_sentence))
+                    except Exception as e:
+                        print(f"❌ [REDIS_ERROR] 同步空任务状态失败: {e}")
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    return
+
+                # 校验：开启物理 SocketCAN 接口
+                try:
+                    can_bus_interface = can.interface.Bus(channel=self.can_bus, interface='socketcan', receive_timeout=0.1)
+                except Exception as e:
+                    result_sentence = f"物理接口 [{self.can_bus}] 开启失败: {str(e)}"
+                    try:
+                        self.redis_handler.redis_client.setex(name=redis_key, time=7200, value=str(result_sentence))
+                    except Exception:
+                        pass
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    return
+
+                # 4. 抓物理总线报文并进行 ID 匹配
+                found_devices = set()
+                start_time = time.time()
+                
+                while time.time() - start_time < 5.0:
+                    msg = can_bus_interface.recv(timeout=0.1)
+                    if msg is None:
+                        time.sleep(0.001)
+                        continue
+                    if msg.arbitration_id in range(256, 512):
+                        can_bus_id = msg.arbitration_id - 256
+                        if can_bus_id in expected_ids:
+                            found_devices.add(can_bus_id)
+                    if all(idx in found_devices for idx in expected_ids):
+                        break
+                    time.sleep(0.001)
+                
+                can_bus_interface.shutdown()
+                
+                missing_ids = [idx for idx in expected_ids if idx not in found_devices]
+
+                # 5. 判定最终中文话术
+                if not missing_ids:
+                    result_sentence = "所有电机均已检测到，请继续下一步！"
+                    
+                    stop_event = threading.Event()
+                    hb_thread = threading.Thread(target=self._run_heartbeat_loop, args=(expected_ids, stop_event))
+                    hb_thread.daemon = True
+                    hb_thread.start()
+                    self.heartbeat_event = stop_event
+                    self.heartbeat_thread = hb_thread
+                else:
+                    missing_str = ", ".join(map(str, missing_ids))
+                    result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
+
+                # 6. 🌟 核心输出：放弃原本乱发 MQ 队列的行为，将纯提示字符串结果强制回刷 Redis 对应键，两小时有效
+                try:
+                    self.redis_handler.redis_client.setex(
+                        name=redis_key, 
+                        time=7200, 
+                        value=str(result_sentence)
+                    )
+                    print(f"✨ [{self.can_bus}] 对比完毕！纯提示信息已成功写回 Redis 键 [{redis_key}]，两小时后自动消除。")
+                except Exception as e:
+                    print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 同步最终结果到 Redis 失败: {e}\033[0m")
+
+                # 7. 🌟 关键收尾：向 RabbitMQ 汇报应答，让此指令从下发队列中销毁，防堆积！
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+
+        except Exception as err:
+            print(f"❌ [CONSUME_CRITICAL_ERROR] 处理任务回调中遭遇异常: {err}")
+            # 即使发生未知未知代码错误，也予以应答，避免系统锁死
+            try:
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+            except Exception:
+                pass
+
+    def start_consuming_mq(self):
+        """代替原先的轮询，将树莓派完全注册为基于 MQ 事件驱动的消费守护进程"""
+        print(f"🚀 [全新架构：MQ 消费者模式已激活] 正在树莓派本地常驻监听 RabbitMQ 任务下发队列: [{self.queue_name}]...")
+        
+        # 限制每次只拿一条任务，多余的任务在 MQ 队列挂起排队，极为稳定安全
+        self.mq_channel.basic_qos(prefetch_count=1)
+        
+        # 绑定接收回调
+        self.mq_channel.basic_consume(queue=self.queue_name, on_message_callback=self.process_tasks_callback)
+        
+        try:
+            self.mq_channel.start_consuming()
+        except KeyboardInterrupt:
+            print("🛑 正在优雅安全关闭常驻 MQ 链路...")
+            self.mq_channel.stop_consuming()
+            self.mq_connection.close()
 
 if __name__ == "__main__":
     service = Can0ConnectivityService(server_ip='192.168.2.47', port=5672)
-    service.start_polling_redis()
+    service.start_consuming_mq()
