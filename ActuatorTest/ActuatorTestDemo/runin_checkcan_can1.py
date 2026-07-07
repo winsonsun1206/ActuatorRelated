@@ -53,18 +53,36 @@ class Can1ConnectivityService:
             print(f"🔒 [{self.can_bus}] 历史心跳守护线程已安全释放。")
 
     def process_tasks_callback(self, ch, method, properties, body):
-        """🌟 核心改造：RabbitMQ 消费者回调函数，替代原先的 Redis 轮询"""
+        """🌟 终极强力兼容版：同时通杀并解析纯文本 JSON 以及 Python Pickle 二进制流"""
         try:
             if not body:
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 return
 
-            # 1. 兼容性解析从 RabbitMQ 队列拿到的任务包
-            decoded_str = body.decode('utf-8') if isinstance(body, bytes) else str(body)
-            task = json.loads(decoded_str.strip())
-            
-            if not isinstance(task, dict):
-                print(f"⚠️ [{self.can_bus}] 从 MQ 拿到的数据不是有效的 JSON 字典对象。")
+            task = None
+
+            # 🌟 核心兼容转换开始
+            # 尝试一：如果数据以 0x80 (Pickle) 字符开头，或者常规 utf-8 失败，优先尝试 pickle 解包
+            if body.startswith(b'\x80'):
+                try:
+                    import pickle
+                    task = pickle.loads(body)
+                    print(f"✨ [{self.can_bus}] 成功通过【Pickle 二进制通道】解密解析任务参数。")
+                except Exception as p_err:
+                    print(f"⚠️ 疑似 Pickle 数据但解包失败: {p_err}")
+
+            # 尝试二：如果不是二进制或 pickle 失败，走常规 JSON 解析
+            if task is None:
+                try:
+                    decoded_str = body.decode('utf-8') if isinstance(body, bytes) else str(body)
+                    task = json.loads(decoded_str.strip())
+                    print(f"✨ [{self.can_bus}] 成功通过【标准 JSON 通道】解析任务参数。")
+                except Exception:
+                    pass
+
+            # 兜底判定
+            if not task or not isinstance(task, dict):
+                print(f"❌ [{self.can_bus}] 格式转换彻底失败！数据既无法按 JSON 解码也无法按 Pickle 解析。")
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 return
 
@@ -76,7 +94,7 @@ class Can1ConnectivityService:
             task_id = str(task_id).strip()
             redis_key = task_id
 
-            # 2. 收到 complete 重置指令：将结果写入 Redis，保存 2 小时
+            # 收到 complete 重置指令：将结果写入 Redis，保存 2 小时
             if 'complete' in task_name or 'complete' in operation:
                 self._stop_existing_heartbeat()
                 try:
@@ -84,15 +102,13 @@ class Can1ConnectivityService:
                     print(f"✨ [{self.can_bus}] 收到完结指令，Redis 键 [{redis_key}] 已拨回 -> [等待检测]")
                 except Exception as e:
                     print(f"❌ [REDIS_ERROR] [{self.can_bus}] 重置状态失败: {e}")
-                
-                # 确认消费，通知 MQ 销毁此任务
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 return
 
-            # 3. 收到实际检测或校验指令
+            # 收到实际检测或校验指令
             if 'check' in task_name or 'check' in operation or 'test' in task_name or 'connectivity' in task_name:
                 self._stop_existing_heartbeat()
-                print(f"📥 [{self.can_bus}] 成功捕获 MQ 指令，开始进行物理 CAN 硬件对比。Task ID: {task_id}")
+                print(f"📥 [{self.can_bus}] 开始进行物理 CAN 硬件对比。Task ID: {task_id}")
                 
                 test_slots = task.get('parameters', [])
                 if isinstance(test_slots, dict):
@@ -122,7 +138,6 @@ class Can1ConnectivityService:
                         except Exception:
                             pass
 
-                # 校验：如果完全没有输入序列号
                 if not expected_ids:
                     result_sentence = "未检测到输入任何序列号，请至少在一个槽位输入数据再检测！"
                     try:
@@ -132,7 +147,6 @@ class Can1ConnectivityService:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                     return
 
-                # 校验：开启物理 SocketCAN 接口
                 try:
                     can_bus_interface = can.interface.Bus(channel=self.can_bus, interface='socketcan', receive_timeout=0.1)
                 except Exception as e:
@@ -144,7 +158,6 @@ class Can1ConnectivityService:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                     return
 
-                # 4. 抓物理总线报文并进行 ID 匹配
                 found_devices = set()
                 start_time = time.time()
                 
@@ -165,7 +178,6 @@ class Can1ConnectivityService:
                 
                 missing_ids = [idx for idx in expected_ids if idx not in found_devices]
 
-                # 5. 判定最终中文话术
                 if not missing_ids:
                     result_sentence = "所有电机均已检测到，请继续下一步！"
                     
@@ -179,23 +191,20 @@ class Can1ConnectivityService:
                     missing_str = ", ".join(map(str, missing_ids))
                     result_sentence = f"检测到 CAN ID: [{missing_str}] 未识别到，请检测硬件连接或是否校准！"
 
-                # 6. 🌟 核心输出：放弃原本乱发 MQ 队列的行为，将纯提示字符串结果强制回刷 Redis 对应键，两小时有效
                 try:
                     self.redis_handler.redis_client.setex(
                         name=redis_key, 
                         time=7200, 
                         value=str(result_sentence)
                     )
-                    print(f"✨ [{self.can_bus}] 对比完毕！纯提示信息已成功写回 Redis 键 [{redis_key}]，两小时后自动消除。")
+                    print(f"✨ [{self.can_bus}] 对比完毕！纯提示信息已成功写回 Redis 键 [{redis_key}]")
                 except Exception as e:
-                    print(f"\033[1;31m❌ [REDIS_ERROR] [{self.can_bus}] 同步最终结果到 Redis 失败: {e}\033[0m")
+                    print(f"❌ [REDIS_ERROR] [{self.can_bus}] 同步最终结果到 Redis 失败: {e}")
 
-                # 7. 🌟 关键收尾：向 RabbitMQ 汇报应答，让此指令从下发队列中销毁，防堆积！
                 ch.basic_ack(delivery_tag=method.delivery_tag)
 
         except Exception as err:
             print(f"❌ [CONSUME_CRITICAL_ERROR] 处理任务回调中遭遇异常: {err}")
-            # 即使发生未知未知代码错误，也予以应答，避免系统锁死
             try:
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             except Exception:
