@@ -12,7 +12,7 @@ from utils.station_conf import read_station_conf
 from utils.redis_handler import RedisHandler
 
 class Can0ConnectivityService:
-    def __init__(self, server_ip='192.168.2.47', port=5672):
+    def __init__(self, server_ip='192.168.2.66', port=5672):
         self.can_bus = "can0"
         self.station_name = read_station_conf().get("station_name", "unknown_station").strip()
         
@@ -228,5 +228,5 @@ class Can0ConnectivityService:
             self.mq_connection.close()
 
 if __name__ == "__main__":
-    service = Can0ConnectivityService(server_ip='192.168.2.47', port=5672)
+    service = Can0ConnectivityService(server_ip='192.168.2.66', port=5672)
     service.start_consuming_mq()

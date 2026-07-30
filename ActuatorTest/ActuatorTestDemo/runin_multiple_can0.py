@@ -179,7 +179,7 @@ def runin_test(actuator_pn:list[str], actuator_sn:list[str], can_msg_address: li
             print("=" * 50)
 
 class RabbitmqCusumer:
-    def __init__(self, queue_name='test_queue', server_ip='192.168.2.47', port=5672, redis_db=0):
+    def __init__(self, queue_name='test_queue', server_ip='192.168.2.66', port=5672, redis_db=0):
         self.queue_name = queue_name
         self.credentials = pika.PlainCredentials('admin', 'ni50509800')
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(server_ip, port, '/', self.credentials, heartbeat=7200, blocked_connection_timeout= 7201))
@@ -414,6 +414,6 @@ class RabbitmqCusumer:
 if __name__ == "__main__":
     station_conf = read_station_conf()
     station_name = station_conf.get("station_name", "unknown_station").strip()
-    consumer = RabbitmqCusumer(queue_name=f'runintest_queue_{station_name}_can0', server_ip='192.168.2.47', port=5672)
+    consumer = RabbitmqCusumer(queue_name=f'runintest_queue_{station_name}_can0', server_ip='192.168.2.66', port=5672)
     consumer.start_consuming()
     

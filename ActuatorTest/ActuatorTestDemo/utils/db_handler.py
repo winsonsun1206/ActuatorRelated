@@ -4,7 +4,7 @@ from datetime import datetime
 
 # 服务器配置
 DB_CONFIG = {
-    'host': '192.168.2.47',
+    'host': '192.168.2.66',
     'user': 'root',
     'password': 'finisar38559200', 
     'database': 'actuator_test_system_wzy'

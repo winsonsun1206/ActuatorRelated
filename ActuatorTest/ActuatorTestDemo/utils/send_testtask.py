@@ -73,4 +73,4 @@ if __name__ == "__main__":
         except ValueError:
             print("Invalid input format. Please enter in the format: 'PN123','SN456',3,1,'runin_test','runintest_queue'")
     if test_slots:
-        send_test_task(test_slots, queue_name=queue_name.strip(), host='192.168.2.47', port=5672, operation=operation.strip())
+        send_test_task(test_slots, queue_name=queue_name.strip(), host='192.168.2.66', port=5672, operation=operation.strip())

@@ -58,7 +58,7 @@ def wait_for_termination(redis_handler, task_id, check_interval=0.3, total_timeo
 
 
 if __name__ == "__main__":
-    redis_handler = RedisHandler(host='192.168.2.47', port=6379, db=0)
+    redis_handler = RedisHandler(host='192.168.2.66', port=6379, db=0)
     #redis_handler.flush_db()  # Clear the database before testing
     # test_data = 22
     # redis_handler.set_value("station_1_can0_bus_1_sadsada_calibration", test_data)

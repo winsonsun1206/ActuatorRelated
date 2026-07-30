@@ -42,7 +42,7 @@ finally:
 
 # def connect_rabbitmq(queue_name='test_queue'):
 #     credentials = pika.PlainCredentials('admin', 'ni50509800')
-#     connection = pika.BlockingConnection(pika.ConnectionParameters('192.168.2.47', 5672,'/', credentials))
+#     connection = pika.BlockingConnection(pika.ConnectionParameters('192.168.2.66', 5672,'/', credentials))
 #     channel = connection.channel()
 #     channel.queue_declare(queue=queue_name, durable=True)
 #     return connection

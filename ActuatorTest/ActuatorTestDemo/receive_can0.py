@@ -305,6 +305,6 @@ def runinTest_monitor(canbus:str, db_handler: TimeScaleDBHandler_can0):
 if __name__ == "__main__":
     
     station_name = read_station_conf().get("station_name", "unknown_station")
-    can0_db_handler = TimeScaleDBHandler_can0(host='192.168.2.47', port=5432, database='actuator_test', user='admin', password='ni50509800', 
+    can0_db_handler = TimeScaleDBHandler_can0(host='192.168.2.66', port=5432, database='actuator_test', user='admin', password='ni50509800', 
                                               table='can0_feedback', flush_batch_size=1500, redis_bank=0, station_name=station_name)
     runinTest_monitor("can0", can0_db_handler)
